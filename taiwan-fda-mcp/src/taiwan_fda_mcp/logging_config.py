@@ -6,7 +6,7 @@ import sys
 
 from pythonjsonlogger import jsonlogger
 
-_state: dict[str, bool] = {"configured": False}
+_CONFIGURED = False
 
 
 def configure_logging(level: str = "INFO") -> None:
@@ -15,7 +15,8 @@ def configure_logging(level: str = "INFO") -> None:
     Logs go to stderr — stdout is reserved for the MCP stdio protocol.
     Idempotent — safe to call multiple times.
     """
-    if _state["configured"]:
+    global _CONFIGURED
+    if _CONFIGURED:
         return
 
     handler = logging.StreamHandler(sys.stderr)
@@ -31,4 +32,4 @@ def configure_logging(level: str = "INFO") -> None:
     root.addHandler(handler)
     root.setLevel(level.upper())
 
-    _state["configured"] = True
+    _CONFIGURED = True
