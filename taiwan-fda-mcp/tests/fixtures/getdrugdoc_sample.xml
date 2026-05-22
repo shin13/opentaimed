@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ROOTDOCUMENT>
+  <DOCUMENT>
+    <INFO>
+      <SNO>衛署藥輸字第021571號</SNO>
+      <CNAME>脈優錠５毫克</CNAME>
+      <ENAME>NORVASC TABLETS 5MG</ENAME>
+      <DTYPE>須由醫師處方使用</DTYPE>
+      <SNAME></SNAME>
+      <VERSION>3</VERSION>
+      <VDATE>2025-10-29</VDATE>
+    </INFO>
+    <WARNING>&lt;p&gt;&lt;strong&gt;警語：&lt;/strong&gt;心衰竭患者慎用。&lt;/p&gt;</WARNING>
+    <CONTENT>
+      <SECTION LEVEL="1" ID="1" border="0" redfont="0" strong="0">
+        <NO>1</NO>
+        <TITLE>性狀</TITLE>
+        <SECTION LEVEL="2" ID="1.1">
+          <NO>1.1</NO>
+          <TITLE>有效成分及含量</TITLE>
+          <VALUE type="text">&lt;p&gt;每錠含 Amlodipine besylate 相當於 Amlodipine 5 mg。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="1.4">
+          <NO>1.4</NO>
+          <TITLE>藥品外觀</TITLE>
+          <VALUE type="image" encode="1" filename="pill.jpg" mimetype="image/jpeg">QUJDREVG</VALUE>
+        </SECTION>
+      </SECTION>
+      <SECTION LEVEL="1" ID="2">
+        <NO>2</NO>
+        <TITLE>適應症</TITLE>
+        <VALUE type="text">&lt;p&gt;高血壓、心絞痛。&lt;/p&gt;</VALUE>
+      </SECTION>
+      <SECTION LEVEL="1" ID="3">
+        <NO>3</NO>
+        <TITLE>用法及用量</TITLE>
+        <SECTION LEVEL="2" ID="3.1">
+          <NO>3.1</NO>
+          <TITLE>用法用量</TITLE>
+          <VALUE type="text">&lt;p&gt;成人：每日口服 5 mg 至 10 mg。&lt;/p&gt;</VALUE>
+        </SECTION>
+      </SECTION>
+      <SECTION LEVEL="1" ID="8">
+        <NO>8</NO>
+        <TITLE>副作用/不良反應</TITLE>
+        <VALUE type="text">&lt;p&gt;常見：頭痛、水腫。&lt;/p&gt;</VALUE>
+      </SECTION>
+    </CONTENT>
+    <MAINFACTORY>
+      <FACNO>1</FACNO>
+      <FACNAME>久裕企業股份有限公司</FACNAME>
+      <FACADD>桃園市桃園區大林里興邦路43巷2之1號4樓、3樓、1樓A區</FACADD>
+    </MAINFACTORY>
+    <SUBFACTORY>
+      <FACNO>2</FACNO>
+      <FACNAME>輝瑞愛爾蘭製藥廠</FACNAME>
+      <FACADD>Ireland</FACADD>
+    </SUBFACTORY>
+    <COMPANY>
+      <COMNO>1</COMNO>
+      <COMNAME>暉致醫藥股份有限公司</COMNAME>
+      <COMADD>臺北市信義區信義路５段7號27樓</COMADD>
+    </COMPANY>
+    <COMPANY>
+      <COMNO>2</COMNO>
+      <COMNAME>VIATRIS PHARMACEUTICALS LLC</COMNAME>
+      <COMADD></COMADD>
+    </COMPANY>
+  </DOCUMENT>
+</ROOTDOCUMENT>
