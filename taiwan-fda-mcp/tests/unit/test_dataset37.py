@@ -1,14 +1,20 @@
 # path: tests/unit/test_dataset37.py
-# brief: Verify Dataset 37 parser and on-disk cache logic.
+# brief: Verify Dataset 37 parser, on-disk cache, and download logic.
 
+import io
 import json
 import os
 import time
+import zipfile
 from pathlib import Path
 
-import pytest  # noqa: F401  # imported for pytest plugin discovery
+import httpx
+import pytest
+import respx
 
+from taiwan_fda_mcp.exceptions import DatasetFetchError
 from taiwan_fda_mcp.models import DrugLicense
+from taiwan_fda_mcp.sources.opendata.client import fetch_dataset37
 from taiwan_fda_mcp.sources.opendata.dataset37 import (
     cache_is_fresh,
     load_from_cache,
@@ -54,3 +60,33 @@ def test_cache_freshness(tmp_path: Path, fixtures_dir: Path) -> None:
     old = time.time() - 25 * 3600
     os.utime(cache_file, (old, old))
     assert cache_is_fresh(cache_dir, ttl_hours=24) is False
+
+
+def _make_zip(json_payload: bytes) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("37_5.json", json_payload)
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_fetch_dataset37_unzips_and_parses(fixtures_dir):
+    raw = (fixtures_dir / "dataset37_sample.json").read_bytes()
+    zip_bytes = _make_zip(raw)
+
+    async with respx.mock(base_url="https://data.fda.gov.tw") as router:
+        router.get("/data/opendata/export/37/json").mock(
+            return_value=httpx.Response(200, content=zip_bytes)
+        )
+        rows = await fetch_dataset37("https://data.fda.gov.tw")
+
+    assert len(rows) == 4  # noqa: PLR2004
+    assert rows[0].license_no == "衛署藥輸字第021571號"
+
+
+@pytest.mark.asyncio
+async def test_fetch_dataset37_raises_on_http_error():
+    async with respx.mock(base_url="https://data.fda.gov.tw") as router:
+        router.get("/data/opendata/export/37/json").mock(return_value=httpx.Response(500))
+        with pytest.raises(DatasetFetchError):
+            await fetch_dataset37("https://data.fda.gov.tw")
