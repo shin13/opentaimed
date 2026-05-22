@@ -30,6 +30,10 @@ async def test_fetch_by_license_code(sample_xml):
     assert route.called
     request = route.calls[0].request
     assert request.url.params["license"] == "02021571"
+    # FDA API requires all 4 keys present (values may be blank); missing keys → HTTP 500.
+    assert request.url.params["s_code"] == ""
+    assert request.url.params["startdate"] == ""
+    assert request.url.params["enddate"] == ""
     assert len(inserts) == 1
     assert inserts[0].license_no == "衛署藥輸字第021571號"
 

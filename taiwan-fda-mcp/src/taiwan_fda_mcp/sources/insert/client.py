@@ -14,6 +14,12 @@ _logger = logging.getLogger(__name__)
 
 _PATH = "/Serv/Query.asmx/GetDrugDoc"
 
+# mcp.fda.gov.tw blocks the default python-httpx UA with 403. Use a generic browser UA.
+_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+)
+
 
 async def fetch_drug_insert(
     *,
@@ -23,7 +29,7 @@ async def fetch_drug_insert(
     startdate: str | None = None,
     enddate: str | None = None,
     rate_limit_interval: float = 0.5,
-    timeout: float = 30.0,  # noqa: ASYNC109
+    timeout: float = 120.0,  # noqa: ASYNC109 — wide date ranges return 20MB+ XML in 30-60s
 ) -> list[DrugInsert]:
     """Fetch inserts from mcp.fda.gov.tw GetDrugDoc.
 
@@ -48,21 +54,20 @@ async def fetch_drug_insert(
             "GetDrugDoc requires at least one of license_code, s_code, startdate, enddate",
         )
 
-    params: dict[str, str] = {}
-    if license_code:
-        params["license"] = license_code
-    if s_code:
-        params["s_code"] = s_code
-    if startdate:
-        params["startdate"] = startdate
-    if enddate:
-        params["enddate"] = enddate
+    params: dict[str, str] = {
+        "license": license_code or "",
+        "s_code": s_code or "",
+        "startdate": startdate or "",
+        "enddate": enddate or "",
+    }
 
     url = f"{base_url.rstrip('/')}{_PATH}"
     _logger.info("insert.fetch.start", extra={"params": params})
 
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(
+            timeout=timeout, headers={"User-Agent": _USER_AGENT}
+        ) as client:
             response = await client.get(url, params=params)
             response.raise_for_status()
             body = response.content
