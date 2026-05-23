@@ -22,10 +22,11 @@ FieldGroupLiteral = Literal["all", "key_fields"]
 
 mcp: FastMCP = FastMCP(
     name="taiwan-fda-mcp",
-    instructions=(  # noqa: RUF001
-        "查詢台灣食藥署 (TFDA) 維護的官方藥物資訊：藥品許可證、仿單章節、更新追蹤。\n\n"
-        "本 server 為個人開發者專案，**非台灣政府官方產品**，僅作為 TFDA 公開資料"
-        "(data.fda.gov.tw Dataset 37 + mcp.fda.gov.tw GetDrugDoc API) 的查詢介面，"
+    instructions=(
+        # Chinese fullwidth punctuation is intentional — per-line noqa: RUF001 below.
+        "查詢台灣食藥署 (TFDA) 維護的官方藥物資訊：藥品許可證、仿單章節、更新追蹤。\n\n"  # noqa: RUF001
+        "本 server 為個人開發者專案，**非台灣政府官方產品**，僅作為 TFDA 公開資料"  # noqa: RUF001
+        "(data.fda.gov.tw Dataset 37 + mcp.fda.gov.tw GetDrugDoc API) 的查詢介面，"  # noqa: RUF001
         "不對資料做改寫或臨床判斷。\n\n"
         "When answering questions about Taiwan drug 仿單 (indication / dosage / "
         "contraindications / warnings / side effects / interactions) or insert "

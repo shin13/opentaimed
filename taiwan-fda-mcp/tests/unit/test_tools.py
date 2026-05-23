@@ -79,6 +79,16 @@ async def test_get_package_insert_key_fields(seeded_settings, fixtures_dir):
     assert result["last_update_date"] == "2025-10-29"
     datetime.fromisoformat(result["retrieved_at"])
 
+    # Section paths satisfy spec §14 citation requirement.
+    assert result["field_sections"]["indication"] == "2"
+    assert result["field_sections"]["dosage"] == "3"
+    assert result["field_sections"]["warnings"] == "5"
+    assert result["field_sections"]["side_effects"] == "8"
+
+    # Attribution: data is official, wrapper is not.
+    assert result["attribution"]["data_official"] is True
+    assert "NOT a TFDA product" in result["attribution"]["wrapper"]
+
 
 @pytest.mark.asyncio
 async def test_get_package_insert_explicit_fields(seeded_settings, fixtures_dir):

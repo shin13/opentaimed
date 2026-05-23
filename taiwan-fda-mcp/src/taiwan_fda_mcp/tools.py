@@ -182,6 +182,7 @@ async def get_package_insert(
     field_list = _resolve_fields(fields)
     known_fields = set(ALL_FIELDS)
     field_values: dict[str, str] = {}
+    field_sections: dict[str, str] = {}
     unknown_fields: list[str] = []
     for f in field_list:
         if f not in known_fields:
@@ -190,10 +191,19 @@ async def get_package_insert(
         value = _extract_field(f, insert=insert, license_row=license_row)
         if value:
             field_values[f] = value
+            section_no = _SECTION_NUMBERS.get(f)
+            if section_no:
+                field_sections[f] = section_no
+            elif f == "warnings":
+                # warnings merges top-level <WARNING> + section 5; section 5 is the canonical citation.
+                field_sections[f] = "5"
 
     response: dict[str, Any] = {
         "license_no": license_no,
         "fields": field_values,
+        # section_path per clinical field — satisfies spec §14 citation requirement
+        # (every claim must cite source_url + retrieved_at + last_update_date + section).
+        "field_sections": field_sections,
         # API URL (XML) — all 4 keys must be present or FDA returns HTTP 500.
         "source_url": (
             f"{s.FDA_INSERT_BASE_URL.rstrip('/')}/Serv/Query.asmx/GetDrugDoc"
