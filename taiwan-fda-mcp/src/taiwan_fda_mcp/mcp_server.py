@@ -58,16 +58,17 @@ async def get_package_insert(
 
     Args:
         license_no: full Chinese license string (e.g. "衛署藥輸字第021571號").
-        fields: which fields to extract. Either a list of explicit field names, or:
-            "key_fields" (default — indication, dosage, contraindications, warnings, side_effects, last_update_date),
-            "all" (every available field).
-
-        Available field names (use these EXACT spellings):
-          - Basic: name_zh, name_en, license_no, form, applicant, manufacturer, drug_class, valid_until
-          - Clinical: indication, dosage, contraindications, warnings, interactions, side_effects
-          - Pharmacology: ingredients, pharmacology, pharmacokinetics
-          - Storage: packaging, storage_conditions
-          - Metadata: last_update_date, insert_version
+        fields: which fields to extract. Either "key_fields" (default — indication, dosage,
+            contraindications, warnings, side_effects, last_update_date), "all" (every
+            available field), or an explicit list of field names from this exact set:
+            Basic — name_zh, name_en, license_no, form, applicant, manufacturer,
+            drug_class, valid_until;
+            Clinical — indication, dosage, contraindications, warnings, interactions,
+            side_effects;
+            Pharmacology — ingredients, pharmacology, pharmacokinetics;
+            Storage — packaging, storage_conditions;
+            Metadata — last_update_date, insert_version.
+            Unknown names are returned in `unknown_fields` for self-correction.
 
     Returns:
         Dict with license_no, fields (text per field), source_url, retrieved_at, last_update_date.
