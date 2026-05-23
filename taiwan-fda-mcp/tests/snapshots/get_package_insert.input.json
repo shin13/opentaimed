@@ -1,0 +1,32 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "fields": {
+      "anyOf": [
+        {
+          "enum": [
+            "all",
+            "key_fields"
+          ],
+          "type": "string"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ],
+      "default": "key_fields",
+      "description": "which fields to extract. Either \"key_fields\" (default — indication, dosage,\ncontraindications, warnings, side_effects, last_update_date), \"all\" (every\navailable field), or an explicit list of field names from this exact set:\nBasic — name_zh, name_en, license_no, form, applicant, manufacturer,\ndrug_class, valid_until;\nClinical — indication, dosage, contraindications, warnings, interactions,\nside_effects;\nPharmacology — ingredients, pharmacology, pharmacokinetics;\nStorage — packaging, storage_conditions;\nMetadata — last_update_date, insert_version.\nUnknown names are returned in `unknown_fields` for self-correction."
+    },
+    "license_no": {
+      "description": "full Chinese license string (e.g. \"衛署藥輸字第021571號\").",
+      "type": "string"
+    }
+  },
+  "required": [
+    "license_no"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,30 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "limit": {
+      "default": 10,
+      "description": "maximum results (default 10).",
+      "type": "integer"
+    },
+    "query": {
+      "description": "keyword to search (e.g. \"脈優\", \"atorvastatin\", \"021571\").",
+      "type": "string"
+    },
+    "search_by": {
+      "default": "any",
+      "description": "which field to search. \"any\" (default) searches name + ingredient + license.",
+      "enum": [
+        "any",
+        "name_zh",
+        "name_en",
+        "ingredient",
+        "license_no"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,124 @@
+{
+  "description": "Response shape for `search_drugs`.",
+  "properties": {
+    "error": {
+      "anyOf": [
+        {
+          "description": "Structured error block. `code` is the RCode name (string form, stable identifier).",
+          "properties": {
+            "code": {
+              "description": "Stable error code identifier (e.g. 'INSERT_NOT_FOUND').",
+              "type": "string"
+            },
+            "message": {
+              "description": "Human-readable error message in Traditional Chinese or English.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Null on success."
+    },
+    "query": {
+      "description": "Echo of the search keyword the caller passed.",
+      "type": "string"
+    },
+    "results": {
+      "description": "Sorted by license-prefix authority (import/原廠 first), then name_zh.",
+      "items": {
+        "description": "Public-facing license row in search results.\n\nNarrower than the internal `models.DrugLicense` — only fields suitable\nfor downstream consumption are exposed.",
+        "properties": {
+          "applicant": {
+            "description": "申請商.",
+            "type": "string"
+          },
+          "drug_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "藥品類別 (may be null)."
+          },
+          "form": {
+            "description": "劑型.",
+            "type": "string"
+          },
+          "ingredient": {
+            "description": "主成分略述.",
+            "type": "string"
+          },
+          "license_no": {
+            "description": "許可證字號 (e.g. 衛署藥輸字第021571號).",
+            "type": "string"
+          },
+          "manufacturer": {
+            "description": "製造商.",
+            "type": "string"
+          },
+          "name_en": {
+            "description": "英文品名.",
+            "type": "string"
+          },
+          "name_zh": {
+            "description": "中文品名.",
+            "type": "string"
+          },
+          "status": {
+            "default": "有效",
+            "description": "Dataset 37 = 未註銷, so always 有效 in MVP.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "license_no",
+          "name_zh",
+          "name_en",
+          "ingredient",
+          "form",
+          "manufacturer",
+          "applicant"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "returned": {
+      "description": "Number of rows actually in `results`.",
+      "type": "integer"
+    },
+    "search_by": {
+      "description": "Echo of search_by (any | name_zh | name_en | ingredient | license_no).",
+      "type": "string"
+    },
+    "total_matched": {
+      "description": "Total rows matching the keyword BEFORE limit truncation.",
+      "type": "integer"
+    },
+    "truncated": {
+      "description": "True iff total_matched > returned (i.e. caller needs to refine or paginate).",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "query",
+    "search_by",
+    "total_matched",
+    "returned",
+    "truncated"
+  ],
+  "type": "object"
+}

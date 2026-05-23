@@ -1,0 +1,28 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "license_list": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "optional. If provided, only inserts whose license_no is in this list are returned."
+    },
+    "since_date": {
+      "description": "'YYYY-MM-DD' — lower bound (inclusive).",
+      "type": "string"
+    }
+  },
+  "required": [
+    "since_date"
+  ],
+  "type": "object"
+}

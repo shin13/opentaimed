@@ -1,0 +1,213 @@
+{
+  "additionalProperties": false,
+  "description": "Response shape for `get_package_insert`.\n\nOn success: `error` is null and all payload fields are populated.\nOn failure: `error` is populated and payload fields are absent / default.\n\nCitation requirement (per spec §14): every clinical claim returned in\n`fields` is traceable via (source_url, retrieved_at, last_update_date,\nfield_sections[field_name]) — all four are present on success.",
+  "properties": {
+    "alternate_versions": {
+      "description": "Older insert versions returned alongside the newest (rare; usually empty).",
+      "items": {
+        "description": "One historical version of an insert (used in alternate_versions).",
+        "properties": {
+          "update_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO date when this version was published, or null."
+          },
+          "version": {
+            "description": "Version label from the FDA XML.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "update_date"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "attribution": {
+      "anyOf": [
+        {
+          "description": "Per-response attribution — distinguishes official data from third-party wrapper.",
+          "properties": {
+            "data_official": {
+              "description": "True iff `data_source` is a government/official body.",
+              "type": "boolean"
+            },
+            "data_source": {
+              "description": "Authoritative data origin.",
+              "type": "string"
+            },
+            "wrapper": {
+              "description": "Identity of the (third-party) MCP server returning this response.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "data_source",
+            "data_official",
+            "wrapper"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Origin metadata — official data vs third-party wrapper."
+    },
+    "error": {
+      "anyOf": [
+        {
+          "description": "Structured error block. `code` is the RCode name (string form, stable identifier).",
+          "properties": {
+            "code": {
+              "description": "Stable error code identifier (e.g. 'INSERT_NOT_FOUND').",
+              "type": "string"
+            },
+            "message": {
+              "description": "Human-readable error message in Traditional Chinese or English.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Null on success."
+    },
+    "field_sections": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Map of clinical field-name → insert section number (e.g. 'contraindications': '4').",
+      "type": "object"
+    },
+    "fields": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Map of field-name → plain-text content. Keys are stable identifiers (see ALL_FIELDS).",
+      "type": "object"
+    },
+    "human_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Human URL — official TFDA web page for this insert."
+    },
+    "insert_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Version label from the FDA XML, or null."
+    },
+    "last_update_date": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO date of the insert's last TFDA update."
+    },
+    "license_no": {
+      "description": "Echo of the license_no the caller passed.",
+      "type": "string"
+    },
+    "retrieved_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO 8601 UTC timestamp of this fetch."
+    },
+    "source_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Machine URL — TFDA GetDrugDoc API XML for this license (200 OK; cite as evidence)."
+    },
+    "unknown_fields": {
+      "anyOf": [
+        {
+          "items": {
+            "description": "One unknown field-name entry — annotated with closest valid match.",
+            "properties": {
+              "did_you_mean": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Closest valid field name (via difflib), or null if none close enough."
+              },
+              "input": {
+                "description": "The unrecognised field name the caller passed.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "input",
+              "did_you_mean"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Present iff the caller passed field names not in ALL_FIELDS; each entry has did_you_mean."
+    }
+  },
+  "required": [
+    "license_no"
+  ],
+  "type": "object"
+}
