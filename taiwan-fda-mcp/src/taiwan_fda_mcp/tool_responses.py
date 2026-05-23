@@ -77,6 +77,20 @@ class UnknownFieldInfo(BaseModel):
     )
 
 
+class UnmappedSectionInfo(BaseModel):
+    """One TFDA insert section present in the XML but not yet mapped to a field name.
+
+    Surfaced as a safety net: when TFDA adds new sections to the insert format,
+    they appear here instead of being silently dropped. Acts as the canary for
+    incidents like the 1.2 賦形劑 gap (May 2026).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    section_no: str = Field(description="Section number as it appears in the FDA XML (e.g. '1.2', '16').")
+    title: str = Field(description="Section title from the FDA XML (Traditional Chinese).")
+
+
 class InsertVersionInfo(BaseModel):
     """One historical version of an insert (used in alternate_versions)."""
 
@@ -140,6 +154,15 @@ class GetPackageInsertResponse(BaseModel):
         default=None,
         description="Present iff the caller passed field names not in ALL_FIELDS; each entry has did_you_mean.",
     )
+    unmapped_sections: list[UnmappedSectionInfo] = Field(
+        default_factory=list,
+        description=(
+            "Sections present in the FDA XML but not mapped to any field name in "
+            "this wrapper's known set. Safety net for future TFDA additions — if "
+            "non-empty, the wrapper is missing coverage and `get_package_insert` "
+            "may be omitting data the user can see on mcp.fda.gov.tw."
+        ),
+    )
 
 
 class UpdateEntry(BaseModel):
@@ -199,5 +222,6 @@ __all__ = [
     "InsertVersionInfo",
     "SearchDrugsResponse",
     "UnknownFieldInfo",
+    "UnmappedSectionInfo",
     "UpdateEntry",
 ]

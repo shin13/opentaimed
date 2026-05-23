@@ -38,6 +38,7 @@ from taiwan_fda_mcp.tool_responses import (
     InsertVersionInfo,
     SearchDrugsResponse,
     UnknownFieldInfo,
+    UnmappedSectionInfo,
     UpdateEntry,
 )
 
@@ -236,6 +237,8 @@ async def get_package_insert(
                 # warnings merges top-level <WARNING> + section 5; section 5 is the canonical citation.
                 field_sections[f] = "5"
 
+    unmapped = _collect_unmapped_sections(insert.sections, set(_SECTION_NUMBERS.values()))
+
     return GetPackageInsertResponse(
         license_no=license_no,
         error=None,
@@ -252,6 +255,7 @@ async def get_package_insert(
         alternate_versions=alternates,
         attribution=_ATTRIBUTION,
         unknown_fields=unknown_fields if unknown_fields else None,
+        unmapped_sections=unmapped,
     )
 
 
@@ -455,6 +459,35 @@ def _extract_field(  # noqa: PLR0911, PLR0912
         return html_to_text(_section_text(insert.sections, section_no))
 
     return ""
+
+
+def _collect_unmapped_sections(
+    sections: list[InsertSection],
+    mapped_numbers: set[str],
+) -> list[UnmappedSectionInfo]:
+    """List leaf sections whose `number` is not in `mapped_numbers` and which have text.
+
+    Used to surface XML coverage gaps to callers (see UnmappedSectionInfo docstring).
+    A "leaf" here = has text or is a deepest-level node. Top-level container
+    sections (e.g. section 1 "性狀" with only child sections) are skipped because
+    their children carry the actual content.
+    """
+    out: list[UnmappedSectionInfo] = []
+
+    def walk(section: InsertSection) -> None:
+        # Recurse into children regardless — they may be unmapped even if parent is.
+        for child in section.children:
+            walk(child)
+        # A section is "interesting" if it has its own text content.
+        # Container sections (only children, no text) are not interesting on their own.
+        if section.text and section.number not in mapped_numbers:
+            out.append(UnmappedSectionInfo(section_no=section.number, title=section.title))
+
+    for s in sections:
+        walk(s)
+    # Stable sort by section number string (simple — lexicographic is acceptable for diagnostics).
+    out.sort(key=lambda u: u.section_no)
+    return out
 
 
 def _section_text(sections: list[InsertSection], wanted_number: str) -> str:

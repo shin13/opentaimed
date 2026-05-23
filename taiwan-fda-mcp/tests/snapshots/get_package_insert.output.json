@@ -204,6 +204,28 @@
       ],
       "default": null,
       "description": "Present iff the caller passed field names not in ALL_FIELDS; each entry has did_you_mean."
+    },
+    "unmapped_sections": {
+      "description": "Sections present in the FDA XML but not mapped to any field name in this wrapper's known set. Safety net for future TFDA additions — if non-empty, the wrapper is missing coverage and `get_package_insert` may be omitting data the user can see on mcp.fda.gov.tw.",
+      "items": {
+        "description": "One TFDA insert section present in the XML but not yet mapped to a field name.\n\nSurfaced as a safety net: when TFDA adds new sections to the insert format,\nthey appear here instead of being silently dropped. Acts as the canary for\nincidents like the 1.2 賦形劑 gap (May 2026).",
+        "properties": {
+          "section_no": {
+            "description": "Section number as it appears in the FDA XML (e.g. '1.2', '16').",
+            "type": "string"
+          },
+          "title": {
+            "description": "Section title from the FDA XML (Traditional Chinese).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_no",
+          "title"
+        ],
+        "type": "object"
+      },
+      "type": "array"
     }
   },
   "required": [

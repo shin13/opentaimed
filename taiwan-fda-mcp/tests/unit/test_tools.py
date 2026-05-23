@@ -299,3 +299,34 @@ async def test_check_insert_updates_filters_license_list(seeded_settings, fixtur
     assert results["total"] == 0
     assert results["by_date"] == {}
     assert results["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_surfaces_unmapped_sections(
+    seeded_settings, fixtures_dir
+):
+    """Sections present in XML but not in _SECTION_NUMBERS surface as unmapped_sections.
+
+    Safety net so a future TFDA-added section is not silently dropped (the way
+    1.2 賦形劑 was, before this plan).
+    """
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                settings=seeded_settings,
+            )
+        ).model_dump()
+
+    unmapped = result["unmapped_sections"]
+    # Fixture has section 99 ("未來新欄位") deliberately not in _SECTION_NUMBERS.
+    assert any(u["section_no"] == "99" for u in unmapped), unmapped
+    entry_99 = next(u for u in unmapped if u["section_no"] == "99")
+    assert entry_99["title"] == "未來新欄位"
+    # Sanity: known sections (e.g. 1.1 ingredients) MUST NOT appear here.
+    assert not any(u["section_no"] == "1.1" for u in unmapped)
+    assert not any(u["section_no"] == "2" for u in unmapped)
