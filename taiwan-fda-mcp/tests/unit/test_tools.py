@@ -40,12 +40,27 @@ def seeded_settings(tmp_path: Path, fixtures_dir: Path) -> Settings:
 
 
 @pytest.mark.asyncio
-async def test_search_drugs_returns_dicts(seeded_settings):
-    results = await search_drugs(query="脈優", settings=seeded_settings)
-    assert len(results) == 1
-    row = results[0]
+async def test_search_drugs_returns_envelope_with_total(seeded_settings):
+    response = await search_drugs(query="脈優", settings=seeded_settings)
+    assert response["query"] == "脈優"
+    assert response["search_by"] == "any"
+    assert response["error"] is None
+    assert response["total_matched"] == 1
+    assert response["returned"] == 1
+    assert response["truncated"] is False
+    row = response["results"][0]
     assert row["license_no"] == "衛署藥輸字第021571號"
     assert row["name_zh"] == "脈優錠５毫克"
+
+
+@pytest.mark.asyncio
+async def test_search_drugs_signals_truncation(seeded_settings):
+    """When limit < total, response must signal truncation so caller can paginate."""
+    response = await search_drugs(query="錠", limit=1, settings=seeded_settings)
+    assert response["total_matched"] >= 1
+    if response["total_matched"] > 1:
+        assert response["truncated"] is True
+        assert response["returned"] == 1
 
 
 @pytest.mark.asyncio
@@ -126,8 +141,13 @@ async def test_get_package_insert_unknown_field_surfaces_error(seeded_settings, 
             settings=seeded_settings,
         )
     assert "indication" in result["fields"]
-    assert result["unknown_fields"] == ["contraindication", "bogus"]
-    assert "contraindications" in result["valid_fields"]
+    inputs = [u["input"] for u in result["unknown_fields"]]
+    assert inputs == ["contraindication", "bogus"]
+    # `contraindication` (singular) is one letter off → did_you_mean should catch it.
+    by_input = {u["input"]: u["did_you_mean"] for u in result["unknown_fields"]}
+    assert by_input["contraindication"] == "contraindications"
+    # `bogus` has no close match → did_you_mean is None.
+    assert by_input["bogus"] is None
 
 
 @pytest.mark.asyncio
@@ -136,7 +156,27 @@ async def test_get_package_insert_unsupported_prefix(seeded_settings):
         license_no="衛部中藥製字第000001號",
         settings=seeded_settings,
     )
+    # Unified error contract: error dict populated, no payload keys leaked.
     assert result["error"]["code"] == "LICENSE_PREFIX_UNSUPPORTED"
+    assert "fields" not in result
+    assert "source_url" not in result
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_success_has_null_error(seeded_settings, fixtures_dir):
+    """Successful response has `error: null` so callers can branch uniformly."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = await get_package_insert(
+            license_no="衛署藥輸字第021571號",
+            settings=seeded_settings,
+        )
+    assert result["error"] is None
+    assert result["alternate_versions"] == []  # fixture has 1 insert → no alternates
+    assert result["insert_version"] is not None
 
 
 @pytest.mark.asyncio
@@ -153,8 +193,14 @@ async def test_check_insert_updates_batches_date_ranges(seeded_settings, fixture
         )
     # 29-day span → 3 batches of ≤10 days
     assert route.call_count == 3  # noqa: PLR2004
-    assert any(r["license_no"] == "衛署藥輸字第021571號" for r in results)
-    assert all(r["has_updated"] for r in results)
+    assert results["error"] is None
+    assert results["since_date"] == "2025-10-01"
+    assert results["today"] == "2025-10-29"
+    assert results["total"] >= 1
+    assert any(u["license_no"] == "衛署藥輸字第021571號" for u in results["updates"])
+    # by_date is keyed by date string, values are counts.
+    assert sum(results["by_date"].values()) == results["total"]
+    assert results["batch_errors"] == []
 
 
 @pytest.mark.asyncio
@@ -170,4 +216,7 @@ async def test_check_insert_updates_filters_license_list(seeded_settings, fixtur
             license_list=["衛部藥輸字第026701號"],
             settings=seeded_settings,
         )
-    assert results == []
+    assert results["updates"] == []
+    assert results["total"] == 0
+    assert results["by_date"] == {}
+    assert results["error"] is None

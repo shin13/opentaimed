@@ -45,10 +45,14 @@ async def test_search_drugs_tool():
     async with Client(mcp) as client:
         result = await client.call_tool("search_drugs", {"query": "atorvastatin"})
     payload = result.structured_content or json.loads(result.content[0].text)  # type: ignore[union-attr]
-    if isinstance(payload, dict) and "result" in payload:
+    if isinstance(payload, dict) and "result" in payload and "results" not in payload:
+        # FastMCP wraps scalar/list returns in {"result": ...}; dict returns are passed through.
         payload = payload["result"]
-    assert isinstance(payload, list)
-    assert len(payload) == 2  # noqa: PLR2004
+    assert payload["total_matched"] == 2  # noqa: PLR2004
+    assert payload["returned"] == 2  # noqa: PLR2004
+    assert payload["truncated"] is False
+    assert payload["error"] is None
+    assert len(payload["results"]) == 2  # noqa: PLR2004
 
 
 @pytest.mark.asyncio

@@ -50,7 +50,7 @@ async def search_drugs(
     query: str,
     search_by: SearchByLiteral = "any",
     limit: int = 10,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """Search Taiwan FDA drug licenses by Chinese / English name, active ingredient, or license number.
 
     Args:
@@ -59,8 +59,11 @@ async def search_drugs(
         limit: maximum results (default 10).
 
     Returns:
-        List of drug license rows with license_no, name_zh, name_en, ingredient, form,
-        manufacturer, applicant, drug_class, status. All rows are active (Dataset 37 = 未註銷).
+        Dict with `total_matched` (full match count), `returned` (rows in `results`),
+        `truncated` (bool), `results` (list of license rows), and `error: null`.
+        Results sorted by license-prefix authority (import/原廠 first) then name_zh,
+        so the most likely canonical reference surfaces at index 0 when many
+        generics share an ingredient.
     """
     return await _search_drugs(query=query, search_by=search_by, limit=limit)
 
@@ -97,7 +100,7 @@ async def get_package_insert(
 async def check_insert_updates(
     since_date: str,
     license_list: list[str] | None = None,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """List Taiwan FDA drug inserts that were updated on or after the given date.
 
     Args:
@@ -105,8 +108,11 @@ async def check_insert_updates(
         license_list: optional. If provided, only inserts whose license_no is in this list are returned.
 
     Returns:
-        List of {license_no, name_zh, last_update_date, has_updated} dicts.
-        The GetDrugDoc API caps each request at a 10-day window — this tool batches automatically.
+        Dict with `total` (unique inserts updated), `by_date` (histogram newest-first),
+        `updates` (list sorted by last_update_date desc), `batch_errors` (per-window
+        failures from the underlying API — surfaced not swallowed), and `error: null`.
+        The GetDrugDoc API caps each request at a 10-day window — this tool batches
+        automatically; a single FDA outage in one batch does not lose the rest.
     """
     return await _check_insert_updates(since_date=since_date, license_list=license_list)
 
