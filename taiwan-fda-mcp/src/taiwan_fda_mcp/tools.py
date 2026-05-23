@@ -178,7 +178,11 @@ async def get_package_insert(
     return {
         "license_no": license_no,
         "fields": field_values,
-        "source_url": f"{s.FDA_INSERT_BASE_URL.rstrip('/')}/Serv/Query.asmx/GetDrugDoc?license={code}",
+        # All 4 keys must be present in the URL for FDA API to return 200 (blank values OK).
+        "source_url": (
+            f"{s.FDA_INSERT_BASE_URL.rstrip('/')}/Serv/Query.asmx/GetDrugDoc"
+            f"?license={code}&s_code=&startdate=&enddate="
+        ),
         "retrieved_at": datetime.now(UTC).isoformat(),
         "last_update_date": insert.update_date or None,
     }
