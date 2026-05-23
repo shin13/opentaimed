@@ -1,0 +1,203 @@
+# path: src/taiwan_fda_mcp/tool_responses.py
+# brief: Pydantic response models — the public wire contract for the 3 MCP tools.
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ErrorInfo(BaseModel):
+    """Structured error block. `code` is the RCode name (string form, stable identifier)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    code: str = Field(description="Stable error code identifier (e.g. 'INSERT_NOT_FOUND').")
+    message: str = Field(
+        description="Human-readable error message in Traditional Chinese or English."
+    )
+
+
+class Attribution(BaseModel):
+    """Per-response attribution — distinguishes official data from third-party wrapper."""
+
+    model_config = ConfigDict(frozen=True)
+
+    data_source: str = Field(description="Authoritative data origin.")
+    data_official: bool = Field(description="True iff `data_source` is a government/official body.")
+    wrapper: str = Field(
+        description="Identity of the (third-party) MCP server returning this response."
+    )
+
+
+class DrugLicenseRow(BaseModel):
+    """Public-facing license row in search results.
+
+    Narrower than the internal `models.DrugLicense` — only fields suitable
+    for downstream consumption are exposed.
+    """
+
+    license_no: str = Field(description="許可證字號 (e.g. 衛署藥輸字第021571號).")
+    name_zh: str = Field(description="中文品名.")
+    name_en: str = Field(description="英文品名.")
+    ingredient: str = Field(description="主成分略述.")
+    form: str = Field(description="劑型.")
+    manufacturer: str = Field(description="製造商.")
+    applicant: str = Field(description="申請商.")
+    drug_class: str | None = Field(default=None, description="藥品類別 (may be null).")
+    status: str = Field(default="有效", description="Dataset 37 = 未註銷, so always 有效 in MVP.")
+
+
+class SearchDrugsResponse(BaseModel):
+    """Response shape for `search_drugs`."""
+
+    query: str = Field(description="Echo of the search keyword the caller passed.")
+    search_by: str = Field(
+        description="Echo of search_by (any | name_zh | name_en | ingredient | license_no)."
+    )
+    total_matched: int = Field(
+        description="Total rows matching the keyword BEFORE limit truncation."
+    )
+    returned: int = Field(description="Number of rows actually in `results`.")
+    truncated: bool = Field(
+        description="True iff total_matched > returned (i.e. caller needs to refine or paginate)."
+    )
+    results: list[DrugLicenseRow] = Field(
+        default_factory=list,
+        description="Sorted by license-prefix authority (import/原廠 first), then name_zh.",
+    )
+    error: ErrorInfo | None = Field(default=None, description="Null on success.")
+
+
+class UnknownFieldInfo(BaseModel):
+    """One unknown field-name entry — annotated with closest valid match."""
+
+    model_config = ConfigDict(frozen=True)
+
+    input: str = Field(description="The unrecognised field name the caller passed.")
+    did_you_mean: str | None = Field(
+        description="Closest valid field name (via difflib), or null if none close enough."
+    )
+
+
+class InsertVersionInfo(BaseModel):
+    """One historical version of an insert (used in alternate_versions)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    version: str = Field(description="Version label from the FDA XML.")
+    update_date: str | None = Field(
+        description="ISO date when this version was published, or null."
+    )
+
+
+class GetPackageInsertResponse(BaseModel):
+    """Response shape for `get_package_insert`.
+
+    On success: `error` is null and all payload fields are populated.
+    On failure: `error` is populated and payload fields are absent / default.
+
+    Citation requirement (per spec §14): every clinical claim returned in
+    `fields` is traceable via (source_url, retrieved_at, last_update_date,
+    field_sections[field_name]) — all four are present on success.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    license_no: str = Field(description="Echo of the license_no the caller passed.")
+    error: ErrorInfo | None = Field(default=None, description="Null on success.")
+    fields: dict[str, str] = Field(
+        default_factory=dict,
+        description="Map of field-name → plain-text content. Keys are stable identifiers (see ALL_FIELDS).",
+    )
+    field_sections: dict[str, str] = Field(
+        default_factory=dict,
+        description="Map of clinical field-name → insert section number (e.g. 'contraindications': '4').",
+    )
+    source_url: str | None = Field(
+        default=None,
+        description="Machine URL — TFDA GetDrugDoc API XML for this license (200 OK; cite as evidence).",
+    )
+    human_url: str | None = Field(
+        default=None,
+        description="Human URL — official TFDA web page for this insert.",
+    )
+    retrieved_at: str | None = Field(
+        default=None, description="ISO 8601 UTC timestamp of this fetch."
+    )
+    last_update_date: str | None = Field(
+        default=None, description="ISO date of the insert's last TFDA update."
+    )
+    insert_version: str | None = Field(
+        default=None, description="Version label from the FDA XML, or null."
+    )
+    alternate_versions: list[InsertVersionInfo] = Field(
+        default_factory=list,
+        description="Older insert versions returned alongside the newest (rare; usually empty).",
+    )
+    attribution: Attribution | None = Field(
+        default=None,
+        description="Origin metadata — official data vs third-party wrapper.",
+    )
+    unknown_fields: list[UnknownFieldInfo] | None = Field(
+        default=None,
+        description="Present iff the caller passed field names not in ALL_FIELDS; each entry has did_you_mean.",
+    )
+
+
+class UpdateEntry(BaseModel):
+    """One updated insert in `check_insert_updates.updates`."""
+
+    model_config = ConfigDict(frozen=True)
+
+    license_no: str
+    name_zh: str
+    last_update_date: str
+
+
+class BatchError(BaseModel):
+    """One per-window failure in `check_insert_updates.batch_errors`.
+
+    Surfaced (not swallowed) so the caller knows part of the date range
+    failed and can decide whether to retry that window.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    window: list[str] = Field(description="[start_iso, end_iso] of the 10-day batch that failed.")
+    code: str = Field(description="RCode name.")
+    message: str
+
+
+class CheckInsertUpdatesResponse(BaseModel):
+    """Response shape for `check_insert_updates`."""
+
+    since_date: str = Field(description="Lower bound of the date range (echo, ISO format).")
+    today: str | None = Field(default=None, description="Upper bound (defaults to today UTC).")
+    error: ErrorInfo | None = Field(
+        default=None, description="Top-level error if the whole call failed."
+    )
+    total: int = Field(default=0, description="Number of unique inserts updated in the window.")
+    by_date: dict[str, int] = Field(
+        default_factory=dict,
+        description="Histogram of {YYYY-MM-DD: count}, sorted newest-first.",
+    )
+    updates: list[UpdateEntry] = Field(
+        default_factory=list,
+        description="List of updated inserts, sorted by last_update_date descending.",
+    )
+    batch_errors: list[BatchError] = Field(
+        default_factory=list,
+        description="Per-window failures (surfaced rather than swallowed).",
+    )
+
+
+__all__ = [
+    "Attribution",
+    "BatchError",
+    "CheckInsertUpdatesResponse",
+    "DrugLicenseRow",
+    "ErrorInfo",
+    "GetPackageInsertResponse",
+    "InsertVersionInfo",
+    "SearchDrugsResponse",
+    "UnknownFieldInfo",
+    "UpdateEntry",
+]

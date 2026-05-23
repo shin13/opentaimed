@@ -1,12 +1,17 @@
 # path: src/taiwan_fda_mcp/mcp_server.py
 # brief: FastMCP stdio server exposing taiwan_fda_mcp.tools as MCP tools.
 
-from typing import Any, Literal
+from typing import Literal
 
 from fastmcp import FastMCP
 
 from taiwan_fda_mcp.config import get_settings
 from taiwan_fda_mcp.logging_config import configure_logging
+from taiwan_fda_mcp.tool_responses import (
+    CheckInsertUpdatesResponse,
+    GetPackageInsertResponse,
+    SearchDrugsResponse,
+)
 from taiwan_fda_mcp.tools import (
     check_insert_updates as _check_insert_updates,
 )
@@ -50,7 +55,7 @@ async def search_drugs(
     query: str,
     search_by: SearchByLiteral = "any",
     limit: int = 10,
-) -> dict[str, Any]:
+) -> SearchDrugsResponse:
     """Search Taiwan FDA drug licenses by Chinese / English name, active ingredient, or license number.
 
     Args:
@@ -72,7 +77,7 @@ async def search_drugs(
 async def get_package_insert(
     license_no: str,
     fields: FieldGroupLiteral | list[str] = "key_fields",
-) -> dict[str, Any]:
+) -> GetPackageInsertResponse:
     """Fetch the official package insert (仿單) for a Taiwan FDA drug license.
 
     Args:
@@ -100,7 +105,7 @@ async def get_package_insert(
 async def check_insert_updates(
     since_date: str,
     license_list: list[str] | None = None,
-) -> dict[str, Any]:
+) -> CheckInsertUpdatesResponse:
     """List Taiwan FDA drug inserts that were updated on or after the given date.
 
     Args:

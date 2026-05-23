@@ -5,7 +5,7 @@ import difflib
 import logging
 from collections import Counter
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Literal
+from typing import Literal
 from urllib.parse import quote
 
 from taiwan_fda_mcp.config import Settings, get_settings
@@ -14,6 +14,7 @@ from taiwan_fda_mcp.exceptions import (
     InsertParseError,
     InvalidLicenseError,
     LicensePrefixUnsupportedError,
+    RCode,
 )
 from taiwan_fda_mcp.models import DrugInsert, DrugLicense, InsertSection
 from taiwan_fda_mcp.sources.insert.client import fetch_drug_insert
@@ -27,6 +28,18 @@ from taiwan_fda_mcp.sources.opendata.dataset37 import (
 )
 from taiwan_fda_mcp.sources.opendata.search import SearchField
 from taiwan_fda_mcp.sources.opendata.search import search_drugs as _search
+from taiwan_fda_mcp.tool_responses import (
+    Attribution,
+    BatchError,
+    CheckInsertUpdatesResponse,
+    DrugLicenseRow,
+    ErrorInfo,
+    GetPackageInsertResponse,
+    InsertVersionInfo,
+    SearchDrugsResponse,
+    UnknownFieldInfo,
+    UpdateEntry,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -37,11 +50,11 @@ _LICENSES_CACHE: list[DrugLicense] | None = None
 
 # Independent project disclaimer — surfaced in every get_package_insert response
 # so end users see official-source-vs-third-party-wrapper distinction.
-_ATTRIBUTION: dict[str, Any] = {
-    "data_source": "Taiwan FDA (TFDA) — mcp.fda.gov.tw GetDrugDoc API + data.fda.gov.tw opendata",
-    "data_official": True,
-    "wrapper": "taiwan-fda-mcp (independent open-source project, NOT a TFDA product)",
-}
+_ATTRIBUTION = Attribution(
+    data_source="Taiwan FDA (TFDA) — mcp.fda.gov.tw GetDrugDoc API + data.fda.gov.tw opendata",
+    data_official=True,
+    wrapper="taiwan-fda-mcp (independent open-source project, NOT a TFDA product)",
+)
 
 
 KEY_FIELDS: list[str] = [
@@ -112,46 +125,39 @@ async def search_drugs(
     search_by: SearchField = "any",
     limit: int = 10,
     settings: Settings | None = None,
-) -> dict[str, Any]:
+) -> SearchDrugsResponse:
     """Search Dataset 37 for drugs matching `query`.
 
     Dataset 37 = 「未註銷藥品許可證資料集」 — all rows are active by upstream
     definition, so `status` is always "有效" (kept in output for forward compat).
 
-    Returns a dict with:
-        - query, search_by: echo of input (for caller verification)
-        - total_matched: total rows matching the keyword (before limit truncation)
-        - returned: number of rows in `results`
-        - truncated: True iff total_matched > returned
-        - results: sorted by license-prefix authority then name_zh
-        - error: None on success, {code, message} on failure
+    See `SearchDrugsResponse` for the full response shape.
     """
     s = settings or get_settings()
     licenses = await _load_or_refresh_licenses(s)
     total, matches = _search(licenses, keyword=query, search_by=search_by, limit=limit)
     results = [
-        {
-            "license_no": r.license_no,
-            "name_zh": r.name_zh,
-            "name_en": r.name_en,
-            "ingredient": r.ingredient,
-            "form": r.form,
-            "manufacturer": r.manufacturer,
-            "applicant": r.applicant,
-            "drug_class": r.drug_class,
-            "status": "有效",
-        }
+        DrugLicenseRow(
+            license_no=r.license_no,
+            name_zh=r.name_zh,
+            name_en=r.name_en,
+            ingredient=r.ingredient,
+            form=r.form,
+            manufacturer=r.manufacturer,
+            applicant=r.applicant,
+            drug_class=r.drug_class,
+        )
         for r in matches
     ]
-    return {
-        "query": query,
-        "search_by": search_by,
-        "total_matched": total,
-        "returned": len(results),
-        "truncated": total > len(results),
-        "results": results,
-        "error": None,
-    }
+    return SearchDrugsResponse(
+        query=query,
+        search_by=search_by,
+        total_matched=total,
+        returned=len(results),
+        truncated=total > len(results),
+        results=results,
+        error=None,
+    )
 
 
 async def get_package_insert(
@@ -159,28 +165,24 @@ async def get_package_insert(
     *,
     fields: list[str] | Literal["all", "key_fields"] = "key_fields",
     settings: Settings | None = None,
-) -> dict[str, Any]:
+) -> GetPackageInsertResponse:
     """Fetch one license's package insert and return the requested fields.
 
-    Unified response contract — every response has top-level `error`
-    (None on success, {code, message} on failure). On success the payload
-    keys (`fields`, `field_sections`, `source_url`, `human_url`,
-    `retrieved_at`, `last_update_date`, `attribution`) are present.
+    See `GetPackageInsertResponse` for the full response shape, including
+    citation traceability (`field_sections` mapping each clinical field to
+    its insert section number) and self-correcting `unknown_fields` with
+    `did_you_mean`.
 
     When FDA returns multiple inserts for one license (rare — usually
     historical versions), the newest by update_date is selected and the
     rest are surfaced in `alternate_versions`.
-
-    Unknown field names are returned in `unknown_fields`, each annotated
-    with `did_you_mean` (closest match from the valid list) so the caller
-    can self-correct without refetching.
     """
     s = settings or get_settings()
 
     try:
         code = license_str_to_code(license_no)
     except (LicensePrefixUnsupportedError, InvalidLicenseError) as exc:
-        return _error_response(license_no, exc.code.name, exc.message)
+        return _error_response(license_no, exc.code, exc.message)
 
     try:
         inserts = await fetch_drug_insert(
@@ -189,16 +191,16 @@ async def get_package_insert(
             rate_limit_interval=s.FDA_RATE_LIMIT_INTERVAL_SECONDS,
         )
     except (InsertFetchError, InsertParseError) as exc:
-        return _error_response(license_no, exc.code.name, exc.message)
+        return _error_response(license_no, exc.code, exc.message)
 
     if not inserts:
-        return _error_response(license_no, "INSERT_NOT_FOUND", "FDA API returned no documents")
+        return _error_response(license_no, RCode.INSERT_NOT_FOUND, "FDA API returned no documents")
 
     # Pick the newest insert; surface older ones as alternate_versions for transparency.
     inserts_sorted = sorted(inserts, key=lambda i: i.update_date or "", reverse=True)
     insert = inserts_sorted[0]
     alternates = [
-        {"version": alt.version, "update_date": alt.update_date or None}
+        InsertVersionInfo(version=alt.version, update_date=alt.update_date or None)
         for alt in inserts_sorted[1:]
     ]
     license_row = await _find_license_row(license_no, s)
@@ -207,11 +209,13 @@ async def get_package_insert(
     known_fields = set(ALL_FIELDS)
     field_values: dict[str, str] = {}
     field_sections: dict[str, str] = {}
-    unknown_fields: list[dict[str, str | None]] = []
+    unknown_fields: list[UnknownFieldInfo] = []
     for f in field_list:
         if f not in known_fields:
             close = difflib.get_close_matches(f, ALL_FIELDS, n=1, cutoff=0.6)
-            unknown_fields.append({"input": f, "did_you_mean": close[0] if close else None})
+            unknown_fields.append(
+                UnknownFieldInfo(input=f, did_you_mean=close[0] if close else None)
+            )
             continue
         value = _extract_field(f, insert=insert, license_row=license_row)
         if value:
@@ -223,39 +227,31 @@ async def get_package_insert(
                 # warnings merges top-level <WARNING> + section 5; section 5 is the canonical citation.
                 field_sections[f] = "5"
 
-    response: dict[str, Any] = {
-        "license_no": license_no,
-        "error": None,
-        "fields": field_values,
-        # section_path per clinical field — satisfies spec §14 citation requirement
-        # (every claim must cite source_url + retrieved_at + last_update_date + section).
-        "field_sections": field_sections,
-        # API URL (XML) — all 4 keys must be present or FDA returns HTTP 500.
-        "source_url": (
+    return GetPackageInsertResponse(
+        license_no=license_no,
+        error=None,
+        fields=field_values,
+        field_sections=field_sections,
+        source_url=(
             f"{s.FDA_INSERT_BASE_URL.rstrip('/')}/Serv/Query.asmx/GetDrugDoc"
             f"?license={code}&s_code=&startdate=&enddate="
         ),
-        # Human-readable URL — official FDA web page for this insert.
-        "human_url": (
-            f"{s.FDA_INSERT_BASE_URL.rstrip('/')}/im_detail_1/{quote(license_no, safe='')}"
-        ),
-        "retrieved_at": datetime.now(UTC).isoformat(),
-        "last_update_date": insert.update_date or None,
-        "insert_version": insert.version or None,
-        "alternate_versions": alternates,
-        "attribution": _ATTRIBUTION,
-    }
-    if unknown_fields:
-        response["unknown_fields"] = unknown_fields
-    return response
+        human_url=f"{s.FDA_INSERT_BASE_URL.rstrip('/')}/im_detail_1/{quote(license_no, safe='')}",
+        retrieved_at=datetime.now(UTC).isoformat(),
+        last_update_date=insert.update_date or None,
+        insert_version=insert.version or None,
+        alternate_versions=alternates,
+        attribution=_ATTRIBUTION,
+        unknown_fields=unknown_fields if unknown_fields else None,
+    )
 
 
-def _error_response(license_no: str, code: str, message: str) -> dict[str, Any]:
+def _error_response(license_no: str, code: RCode, message: str) -> GetPackageInsertResponse:
     """Unified failure shape for get_package_insert."""
-    return {
-        "license_no": license_no,
-        "error": {"code": code, "message": message},
-    }
+    return GetPackageInsertResponse(
+        license_no=license_no,
+        error=ErrorInfo(code=code.name, message=message),
+    )
 
 
 async def check_insert_updates(
@@ -264,51 +260,36 @@ async def check_insert_updates(
     license_list: list[str] | None = None,
     today: str | None = None,
     settings: Settings | None = None,
-) -> dict[str, Any]:
+) -> CheckInsertUpdatesResponse:
     """Find inserts updated between `since_date` and `today` (inclusive).
 
-    The GetDrugDoc API caps each call at a 10-day window — this function batches.
+    The GetDrugDoc API caps each call at a 10-day window — this function
+    batches automatically. Per-batch failures are SURFACED in `batch_errors`
+    rather than silently dropping the failed window's data.
 
-    Returns a dict with:
-        - since_date, today: echo of the resolved date range
-        - total: number of unique inserts updated in the window
-        - by_date: histogram {YYYY-MM-DD: count}, sorted newest-first by key
-        - updates: list of {license_no, name_zh, last_update_date} sorted
-          by last_update_date descending
-        - batch_errors: list of {window, error} for any batches that failed
-          (the function continues past failures; surfaces them rather than
-          silently dropping data)
-        - error: top-level error if the whole call failed (e.g. invalid date)
+    See `CheckInsertUpdatesResponse` for the full response shape.
     """
     s = settings or get_settings()
     try:
         start = date.fromisoformat(since_date)
     except ValueError as exc:
-        return {
-            "since_date": since_date,
-            "today": today,
-            "error": {"code": "INVALID_DATE", "message": str(exc)},
-            "total": 0,
-            "by_date": {},
-            "updates": [],
-            "batch_errors": [],
-        }
+        return CheckInsertUpdatesResponse(
+            since_date=since_date,
+            today=today,
+            error=ErrorInfo(code="INVALID_DATE", message=str(exc)),
+        )
     end = date.fromisoformat(today) if today else datetime.now(UTC).date()
 
     if end < start:
-        return {
-            "since_date": start.isoformat(),
-            "today": end.isoformat(),
-            "error": None,
-            "total": 0,
-            "by_date": {},
-            "updates": [],
-            "batch_errors": [],
-        }
+        return CheckInsertUpdatesResponse(
+            since_date=start.isoformat(),
+            today=end.isoformat(),
+            error=None,
+        )
 
     filter_set = set(license_list) if license_list else None
     seen: dict[str, DrugInsert] = {}
-    batch_errors: list[dict[str, Any]] = []
+    batch_errors: list[BatchError] = []
 
     window_start = start
     while window_start <= end:
@@ -329,11 +310,11 @@ async def check_insert_updates(
                 },
             )
             batch_errors.append(
-                {
-                    "window": [window_start.isoformat(), window_end.isoformat()],
-                    "code": exc.code.name,
-                    "message": exc.message,
-                }
+                BatchError(
+                    window=[window_start.isoformat(), window_end.isoformat()],
+                    code=exc.code.name,
+                    message=exc.message,
+                )
             )
             window_start = window_end + timedelta(days=1)
             continue
@@ -346,28 +327,28 @@ async def check_insert_updates(
 
     updates = sorted(
         (
-            {
-                "license_no": ins.license_no,
-                "name_zh": ins.name_zh,
-                "last_update_date": ins.update_date,
-            }
+            UpdateEntry(
+                license_no=ins.license_no,
+                name_zh=ins.name_zh,
+                last_update_date=ins.update_date,
+            )
             for ins in seen.values()
         ),
-        key=lambda u: u["last_update_date"] or "",
+        key=lambda u: u.last_update_date or "",
         reverse=True,
     )
-    by_date_counter = Counter(u["last_update_date"] for u in updates if u["last_update_date"])
+    by_date_counter = Counter(u.last_update_date for u in updates if u.last_update_date)
     by_date = dict(sorted(by_date_counter.items(), key=lambda kv: kv[0], reverse=True))
 
-    return {
-        "since_date": start.isoformat(),
-        "today": end.isoformat(),
-        "error": None,
-        "total": len(updates),
-        "by_date": by_date,
-        "updates": updates,
-        "batch_errors": batch_errors,
-    }
+    return CheckInsertUpdatesResponse(
+        since_date=start.isoformat(),
+        today=end.isoformat(),
+        error=None,
+        total=len(updates),
+        by_date=by_date,
+        updates=updates,
+        batch_errors=batch_errors,
+    )
 
 
 # --- internals ----------------------------------------------------------------

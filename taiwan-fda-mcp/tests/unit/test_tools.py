@@ -41,7 +41,7 @@ def seeded_settings(tmp_path: Path, fixtures_dir: Path) -> Settings:
 
 @pytest.mark.asyncio
 async def test_search_drugs_returns_envelope_with_total(seeded_settings):
-    response = await search_drugs(query="脈優", settings=seeded_settings)
+    response = (await search_drugs(query="脈優", settings=seeded_settings)).model_dump()
     assert response["query"] == "脈優"
     assert response["search_by"] == "any"
     assert response["error"] is None
@@ -56,7 +56,7 @@ async def test_search_drugs_returns_envelope_with_total(seeded_settings):
 @pytest.mark.asyncio
 async def test_search_drugs_signals_truncation(seeded_settings):
     """When limit < total, response must signal truncation so caller can paginate."""
-    response = await search_drugs(query="錠", limit=1, settings=seeded_settings)
+    response = (await search_drugs(query="錠", limit=1, settings=seeded_settings)).model_dump()
     assert response["total_matched"] >= 1
     if response["total_matched"] > 1:
         assert response["truncated"] is True
@@ -70,10 +70,12 @@ async def test_get_package_insert_key_fields(seeded_settings, fixtures_dir):
         router.get("/Serv/Query.asmx/GetDrugDoc").mock(
             return_value=httpx.Response(200, content=xml)
         )
-        result = await get_package_insert(
-            license_no="衛署藥輸字第021571號",
-            settings=seeded_settings,
-        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                settings=seeded_settings,
+            )
+        ).model_dump()
 
     assert result["license_no"] == "衛署藥輸字第021571號"
     fields = result["fields"]
@@ -112,11 +114,13 @@ async def test_get_package_insert_explicit_fields(seeded_settings, fixtures_dir)
         router.get("/Serv/Query.asmx/GetDrugDoc").mock(
             return_value=httpx.Response(200, content=xml)
         )
-        result = await get_package_insert(
-            license_no="衛署藥輸字第021571號",
-            fields=["indication", "name_zh", "manufacturer"],
-            settings=seeded_settings,
-        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                fields=["indication", "name_zh", "manufacturer"],
+                settings=seeded_settings,
+            )
+        ).model_dump(exclude_none=True)
     assert set(result["fields"]) == {"indication", "name_zh", "manufacturer"}
     assert result["fields"]["name_zh"] == "脈優錠５毫克"
     assert result["fields"]["manufacturer"] == "久裕企業股份有限公司"
@@ -135,11 +139,13 @@ async def test_get_package_insert_unknown_field_surfaces_error(seeded_settings, 
         router.get("/Serv/Query.asmx/GetDrugDoc").mock(
             return_value=httpx.Response(200, content=xml)
         )
-        result = await get_package_insert(
-            license_no="衛署藥輸字第021571號",
-            fields=["indication", "contraindication", "bogus"],  # singular typo + nonsense
-            settings=seeded_settings,
-        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                fields=["indication", "contraindication", "bogus"],  # singular typo + nonsense
+                settings=seeded_settings,
+            )
+        ).model_dump()
     assert "indication" in result["fields"]
     inputs = [u["input"] for u in result["unknown_fields"]]
     assert inputs == ["contraindication", "bogus"]
@@ -152,11 +158,14 @@ async def test_get_package_insert_unknown_field_surfaces_error(seeded_settings, 
 
 @pytest.mark.asyncio
 async def test_get_package_insert_unsupported_prefix(seeded_settings):
-    result = await get_package_insert(
-        license_no="衛部中藥製字第000001號",
-        settings=seeded_settings,
-    )
-    # Unified error contract: error dict populated, no payload keys leaked.
+    result = (
+        await get_package_insert(
+            license_no="衛部中藥製字第000001號",
+            settings=seeded_settings,
+        )
+    ).model_dump(exclude_none=True, exclude_defaults=True)
+    # Unified error contract: error dict populated, payload defaults excluded so
+    # they don't leak as empty values into the wire format.
     assert result["error"]["code"] == "LICENSE_PREFIX_UNSUPPORTED"
     assert "fields" not in result
     assert "source_url" not in result
@@ -170,10 +179,12 @@ async def test_get_package_insert_success_has_null_error(seeded_settings, fixtur
         router.get("/Serv/Query.asmx/GetDrugDoc").mock(
             return_value=httpx.Response(200, content=xml)
         )
-        result = await get_package_insert(
-            license_no="衛署藥輸字第021571號",
-            settings=seeded_settings,
-        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                settings=seeded_settings,
+            )
+        ).model_dump()
     assert result["error"] is None
     assert result["alternate_versions"] == []  # fixture has 1 insert → no alternates
     assert result["insert_version"] is not None
@@ -186,11 +197,13 @@ async def test_check_insert_updates_batches_date_ranges(seeded_settings, fixture
         route = router.get("/Serv/Query.asmx/GetDrugDoc").mock(
             return_value=httpx.Response(200, content=xml)
         )
-        results = await check_insert_updates(
-            since_date="2025-10-01",
-            today="2025-10-29",
-            settings=seeded_settings,
-        )
+        results = (
+            await check_insert_updates(
+                since_date="2025-10-01",
+                today="2025-10-29",
+                settings=seeded_settings,
+            )
+        ).model_dump()
     # 29-day span → 3 batches of ≤10 days
     assert route.call_count == 3  # noqa: PLR2004
     assert results["error"] is None
@@ -210,12 +223,14 @@ async def test_check_insert_updates_filters_license_list(seeded_settings, fixtur
         router.get("/Serv/Query.asmx/GetDrugDoc").mock(
             return_value=httpx.Response(200, content=xml)
         )
-        results = await check_insert_updates(
-            since_date="2025-10-25",
-            today="2025-10-29",
-            license_list=["衛部藥輸字第026701號"],
-            settings=seeded_settings,
-        )
+        results = (
+            await check_insert_updates(
+                since_date="2025-10-25",
+                today="2025-10-29",
+                license_list=["衛部藥輸字第026701號"],
+                settings=seeded_settings,
+            )
+        ).model_dump()
     assert results["updates"] == []
     assert results["total"] == 0
     assert results["by_date"] == {}
