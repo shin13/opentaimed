@@ -15,6 +15,7 @@ from taiwan_fda_mcp.exceptions import (
 )
 from taiwan_fda_mcp.models import DrugInsert, DrugLicense, InsertSection
 from taiwan_fda_mcp.sources.insert.client import fetch_drug_insert
+from taiwan_fda_mcp.sources.insert.html_text import html_to_text
 from taiwan_fda_mcp.sources.license_code import license_str_to_code
 from taiwan_fda_mcp.sources.opendata.client import fetch_dataset37
 from taiwan_fda_mcp.sources.opendata.dataset37 import (
@@ -355,16 +356,17 @@ def _extract_field(  # noqa: PLR0911, PLR0912
     # Special: warnings combines top-level <WARNING> with CONTENT section "5"
     # (real Rx inserts put警語 in either or both places).
     if field == "warnings":
-        top = insert.warning_html
-        section5 = _section_text(insert.sections, "5")
+        top = html_to_text(insert.warning_html)
+        section5 = html_to_text(_section_text(insert.sections, "5"))
         if top and section5:
             return f"{top}\n\n{section5}"
         return top or section5
 
-    # CONTENT section-based fields
+    # CONTENT section-based fields — strip HTML to plain text. Saves ~75% tokens
+    # and prevents the LLM from leaking raw <p style="..."> markup into responses.
     section_no = _SECTION_NUMBERS.get(field)
     if section_no:
-        return _section_text(insert.sections, section_no)
+        return html_to_text(_section_text(insert.sections, section_no))
 
     return ""
 
