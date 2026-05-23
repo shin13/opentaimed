@@ -32,6 +32,15 @@ _logger = logging.getLogger(__name__)
 _LICENSES_CACHE: list[DrugLicense] | None = None
 
 
+# Independent project disclaimer — surfaced in every get_package_insert response
+# so end users see official-source-vs-third-party-wrapper distinction.
+_ATTRIBUTION: dict[str, Any] = {
+    "data_source": "Taiwan FDA (TFDA) — mcp.fda.gov.tw GetDrugDoc API + data.fda.gov.tw opendata",
+    "data_official": True,
+    "wrapper": "taiwan-fda-mcp (independent open-source project, NOT a TFDA product)",
+}
+
+
 KEY_FIELDS: list[str] = [
     "indication",
     "dosage",
@@ -196,6 +205,7 @@ async def get_package_insert(
         ),
         "retrieved_at": datetime.now(UTC).isoformat(),
         "last_update_date": insert.update_date or None,
+        "attribution": _ATTRIBUTION,
     }
     if unknown_fields:
         response["unknown_fields"] = unknown_fields

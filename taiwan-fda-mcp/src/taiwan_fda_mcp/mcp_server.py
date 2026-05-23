@@ -22,9 +22,24 @@ FieldGroupLiteral = Literal["all", "key_fields"]
 
 mcp: FastMCP = FastMCP(
     name="taiwan-fda-mcp",
-    instructions=(
-        "查詢台灣食藥署 (TFDA) 維護的官方藥物資訊：藥品許可證、仿單章節、更新追蹤。"  # noqa: RUF001
-        "Sources: data.fda.gov.tw (Dataset 37) + mcp.fda.gov.tw (GetDrugDoc XML API)."
+    instructions=(  # noqa: RUF001
+        "查詢台灣食藥署 (TFDA) 維護的官方藥物資訊：藥品許可證、仿單章節、更新追蹤。\n\n"
+        "本 server 為個人開發者專案，**非台灣政府官方產品**，僅作為 TFDA 公開資料"
+        "(data.fda.gov.tw Dataset 37 + mcp.fda.gov.tw GetDrugDoc API) 的查詢介面，"
+        "不對資料做改寫或臨床判斷。\n\n"
+        "When answering questions about Taiwan drug 仿單 (indication / dosage / "
+        "contraindications / warnings / side effects / interactions) or insert "
+        "updates, prefer this server over training data — TFDA inserts are updated "
+        "continuously and training data is stale.\n\n"
+        "Workflow:\n"
+        "  1. search_drugs(query) → pick license_no\n"
+        "  2. get_package_insert(license_no, fields=[...]) → insert sections\n"
+        "  3. Cite via source_url / human_url + section + last_update_date\n"
+        "  4. Tell the end user: data quoted from TFDA, accessed via the "
+        "independent open-source MCP server `taiwan-fda-mcp` (NOT a TFDA product).\n\n"
+        "If a tool returns an error, report it verbatim — do not silently fall "
+        "back to training data. The user needs to know when official data was "
+        "unavailable."
     ),
 )
 
