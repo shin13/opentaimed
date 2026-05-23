@@ -61,6 +61,7 @@ KEY_FIELDS: list[str] = [
     "indication",
     "dosage",
     "contraindications",
+    "excipients",
     "warnings",
     "side_effects",
     "last_update_date",
@@ -87,12 +88,20 @@ ALL_FIELDS: list[str] = [
     "interactions",
     "side_effects",
     "ingredients",
+    "excipients",
     "form_detail",
     "appearance",
     "pharmacology",
     "pharmacokinetics",
+    "special_populations",
+    "overdose",
+    "clinical_trials",
     "packaging",
+    "shelf_life",
     "storage_conditions",
+    "storage_cautions",
+    "patient_instructions",
+    "other_info",
 ]
 
 
@@ -370,17 +379,25 @@ def _resolve_fields(fields: list[str] | Literal["all", "key_fields"]) -> list[st
 # Section number per CONTENT field — kept as a single local map for clarity.
 _SECTION_NUMBERS: dict[str, str] = {
     "ingredients": "1.1",
+    "excipients": "1.2",
     "form_detail": "1.3",
     "appearance": "1.4",
     "indication": "2",
     "dosage": "3",
     "contraindications": "4",
+    "special_populations": "6",
     "interactions": "7",
     "side_effects": "8",
+    "overdose": "9",
     "pharmacology": "10",
     "pharmacokinetics": "11",
+    "clinical_trials": "12",
     "packaging": "13.1",
+    "shelf_life": "13.2",
     "storage_conditions": "13.3",
+    "storage_cautions": "13.4",
+    "patient_instructions": "14",
+    "other_info": "15",
 }
 
 
