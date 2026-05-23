@@ -35,6 +35,7 @@ _LICENSES_CACHE: list[DrugLicense] | None = None
 KEY_FIELDS: list[str] = [
     "indication",
     "dosage",
+    "contraindications",
     "warnings",
     "side_effects",
     "last_update_date",
@@ -56,7 +57,7 @@ ALL_FIELDS: list[str] = [
     # CONTENT section-based fields
     "indication",
     "dosage",
-    "contraindication",
+    "contraindications",
     "warnings",
     "interactions",
     "side_effects",
@@ -170,13 +171,18 @@ async def get_package_insert(
     license_row = await _find_license_row(license_no, s)
 
     field_list = _resolve_fields(fields)
+    known_fields = set(ALL_FIELDS)
     field_values: dict[str, str] = {}
+    unknown_fields: list[str] = []
     for f in field_list:
+        if f not in known_fields:
+            unknown_fields.append(f)
+            continue
         value = _extract_field(f, insert=insert, license_row=license_row)
         if value:
             field_values[f] = value
 
-    return {
+    response: dict[str, Any] = {
         "license_no": license_no,
         "fields": field_values,
         # API URL (XML) — all 4 keys must be present or FDA returns HTTP 500.
@@ -191,6 +197,10 @@ async def get_package_insert(
         "retrieved_at": datetime.now(UTC).isoformat(),
         "last_update_date": insert.update_date or None,
     }
+    if unknown_fields:
+        response["unknown_fields"] = unknown_fields
+        response["valid_fields"] = list(ALL_FIELDS)
+    return response
 
 
 async def check_insert_updates(
@@ -274,7 +284,7 @@ _SECTION_NUMBERS: dict[str, str] = {
     "appearance": "1.4",
     "indication": "2",
     "dosage": "3",
-    "contraindication": "4",
+    "contraindications": "4",
     "interactions": "7",
     "side_effects": "8",
     "pharmacology": "10",

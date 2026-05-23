@@ -95,6 +95,29 @@ async def test_get_package_insert_explicit_fields(seeded_settings, fixtures_dir)
     assert set(result["fields"]) == {"indication", "name_zh", "manufacturer"}
     assert result["fields"]["name_zh"] == "脈優錠５毫克"
     assert result["fields"]["manufacturer"] == "久裕企業股份有限公司"
+    assert "unknown_fields" not in result
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_unknown_field_surfaces_error(seeded_settings, fixtures_dir):
+    """Unknown field names must be surfaced in the response, not silently dropped.
+
+    Otherwise the caller (an LLM) has no signal to correct itself and ends up
+    re-fetching with fields="all", wasting tokens.
+    """
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = await get_package_insert(
+            license_no="衛署藥輸字第021571號",
+            fields=["indication", "contraindication", "bogus"],  # singular typo + nonsense
+            settings=seeded_settings,
+        )
+    assert "indication" in result["fields"]
+    assert result["unknown_fields"] == ["contraindication", "bogus"]
+    assert "contraindications" in result["valid_fields"]
 
 
 @pytest.mark.asyncio
