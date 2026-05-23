@@ -72,6 +72,10 @@ async def test_get_package_insert_key_fields(seeded_settings, fixtures_dir):
     assert "頭痛" in fields["side_effects"]
 
     assert result["source_url"].endswith("license=02021571&s_code=&startdate=&enddate=")
+    assert result["human_url"] == (
+        "https://mcp.fda.gov.tw/im_detail_1/"
+        "%E8%A1%9B%E7%BD%B2%E8%97%A5%E8%BC%B8%E5%AD%97%E7%AC%AC021571%E8%99%9F"
+    )
     assert result["last_update_date"] == "2025-10-29"
     datetime.fromisoformat(result["retrieved_at"])
 

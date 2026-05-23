@@ -4,6 +4,7 @@
 import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
+from urllib.parse import quote
 
 from taiwan_fda_mcp.config import Settings, get_settings
 from taiwan_fda_mcp.exceptions import (
@@ -178,10 +179,14 @@ async def get_package_insert(
     return {
         "license_no": license_no,
         "fields": field_values,
-        # All 4 keys must be present in the URL for FDA API to return 200 (blank values OK).
+        # API URL (XML) — all 4 keys must be present or FDA returns HTTP 500.
         "source_url": (
             f"{s.FDA_INSERT_BASE_URL.rstrip('/')}/Serv/Query.asmx/GetDrugDoc"
             f"?license={code}&s_code=&startdate=&enddate="
+        ),
+        # Human-readable URL — official FDA web page for this insert.
+        "human_url": (
+            f"{s.FDA_INSERT_BASE_URL.rstrip('/')}/im_detail_1/{quote(license_no, safe='')}"
         ),
         "retrieved_at": datetime.now(UTC).isoformat(),
         "last_update_date": insert.update_date or None,
