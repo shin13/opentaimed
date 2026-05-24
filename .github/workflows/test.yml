@@ -1,0 +1,42 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  taiwan-fda-mcp:
+    name: taiwan-fda-mcp
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: taiwan-fda-mcp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: taiwan-fda-mcp/uv.lock
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Type-check (pyright)
+        run: uv run pyright src
+
+      - name: Unit tests (pytest)
+        # Default pytest config excludes the `integration` marker, so this
+        # is a no-network run safe for CI.
+        run: uv run pytest -v
