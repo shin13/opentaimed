@@ -1,3 +1,12 @@
+# Internal-only / working-memory files — not published to the public repo.
+# These document private project state (session handoffs, agent instructions,
+# personal task lists) and are excluded by intent.
+/CLAUDE.md
+/STATE.md
+/TODO.md
+/HANDOFF.md
+/docs/
+
 # Environment / Secrets
 .env
 .env.local
