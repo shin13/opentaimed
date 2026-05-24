@@ -20,6 +20,11 @@
           <TITLE>有效成分及含量</TITLE>
           <VALUE type="text">&lt;p&gt;每錠含 Amlodipine besylate 相當於 Amlodipine 5 mg。&lt;/p&gt;</VALUE>
         </SECTION>
+        <SECTION LEVEL="2" ID="1.2">
+          <NO>1.2</NO>
+          <TITLE>賦形劑</TITLE>
+          <VALUE type="text">&lt;p&gt;微晶纖維素、磷酸氫鈣、硬脂酸鎂。&lt;/p&gt;</VALUE>
+        </SECTION>
         <SECTION LEVEL="2" ID="1.4">
           <NO>1.4</NO>
           <TITLE>藥品外觀</TITLE>
@@ -44,6 +49,50 @@
         <NO>8</NO>
         <TITLE>副作用/不良反應</TITLE>
         <VALUE type="text">&lt;p&gt;常見：頭痛、水腫。&lt;/p&gt;</VALUE>
+      </SECTION>
+      <SECTION LEVEL="1" ID="6">
+        <NO>6</NO>
+        <TITLE>特殊族群之用藥</TITLE>
+        <VALUE type="text">&lt;p&gt;孕婦：D 級。哺乳：避免。&lt;/p&gt;</VALUE>
+      </SECTION>
+      <SECTION LEVEL="1" ID="9">
+        <NO>9</NO>
+        <TITLE>過量</TITLE>
+        <VALUE type="text">&lt;p&gt;支持性治療為主。&lt;/p&gt;</VALUE>
+      </SECTION>
+      <SECTION LEVEL="1" ID="12">
+        <NO>12</NO>
+        <TITLE>臨床試驗資料</TITLE>
+        <VALUE type="text">&lt;p&gt;ALLHAT trial 收錄 33,357 名病人。&lt;/p&gt;</VALUE>
+      </SECTION>
+      <SECTION LEVEL="1" ID="13">
+        <NO>13</NO>
+        <TITLE>藥品保存</TITLE>
+        <SECTION LEVEL="2" ID="13.2">
+          <NO>13.2</NO>
+          <TITLE>儲存期限</TITLE>
+          <VALUE type="text">&lt;p&gt;36 個月。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="13.4">
+          <NO>13.4</NO>
+          <TITLE>儲存注意事項</TITLE>
+          <VALUE type="text">&lt;p&gt;避光、防潮。&lt;/p&gt;</VALUE>
+        </SECTION>
+      </SECTION>
+      <SECTION LEVEL="1" ID="14">
+        <NO>14</NO>
+        <TITLE>病人使用須知</TITLE>
+        <VALUE type="text">&lt;p&gt;勿與葡萄柚汁併服。&lt;/p&gt;</VALUE>
+      </SECTION>
+      <SECTION LEVEL="1" ID="15">
+        <NO>15</NO>
+        <TITLE>其他</TITLE>
+        <VALUE type="text">&lt;p&gt;本產品為健保用藥。&lt;/p&gt;</VALUE>
+      </SECTION>
+      <SECTION LEVEL="1" ID="99">
+        <NO>99</NO>
+        <TITLE>未來新欄位</TITLE>
+        <VALUE type="text">&lt;p&gt;模擬一個 wrapper 還沒對應的章節。&lt;/p&gt;</VALUE>
       </SECTION>
     </CONTENT>
     <MAINFACTORY>

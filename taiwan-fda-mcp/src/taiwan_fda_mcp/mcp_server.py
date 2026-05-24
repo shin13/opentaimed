@@ -43,6 +43,14 @@ mcp: FastMCP = FastMCP(
         "  3. Cite via source_url / human_url + section + last_update_date\n"
         "  4. Tell the end user: data quoted from TFDA, accessed via the "
         "independent open-source MCP server `taiwan-fda-mcp` (NOT a TFDA product).\n\n"
+        "**Coverage check before claiming '未載明':** When `get_package_insert` "
+        "returns content but the user asks about something not in `fields`, check "
+        "the `unmapped_sections` list. If a relevant-sounding section number / "
+        "title appears there, the data exists in the source but this wrapper has "
+        "not mapped it yet — report this honestly (\"this wrapper does not yet "
+        "surface section N.M《title》; check {human_url} for the official "
+        "version\") rather than claiming the insert lacks the information. Do NOT "
+        "fall back to training data.\n\n"
         "If a tool returns an error, report it verbatim — do not silently fall "
         "back to training data. The user needs to know when official data was "
         "unavailable."
@@ -83,14 +91,16 @@ async def get_package_insert(
     Args:
         license_no: full Chinese license string (e.g. "衛署藥輸字第021571號").
         fields: which fields to extract. Either "key_fields" (default — indication, dosage,
-            contraindications, warnings, side_effects, last_update_date), "all" (every
-            available field), or an explicit list of field names from this exact set:
+            contraindications, excipients, warnings, side_effects, last_update_date), "all"
+            (every available field), or an explicit list of field names from this exact set:
             Basic — name_zh, name_en, license_no, form, applicant, manufacturer,
             drug_class, valid_until;
             Clinical — indication, dosage, contraindications, warnings, interactions,
-            side_effects;
-            Pharmacology — ingredients, pharmacology, pharmacokinetics;
-            Storage — packaging, storage_conditions;
+            side_effects, special_populations, overdose;
+            Composition — ingredients, excipients, form_detail, appearance;
+            Pharmacology — pharmacology, pharmacokinetics, clinical_trials;
+            Storage — packaging, shelf_life, storage_conditions, storage_cautions;
+            Patient — patient_instructions, other_info;
             Metadata — last_update_date, insert_version.
             Unknown names are returned in `unknown_fields` for self-correction.
 

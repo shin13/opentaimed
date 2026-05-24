@@ -38,10 +38,22 @@ def test_warning_html_decoded(xml_bytes):
 def test_sections_nested(xml_bytes):
     insert = parse_get_drug_doc(xml_bytes)[0]
     titles_l1 = [s.title for s in insert.sections]
-    assert titles_l1 == ["性狀", "適應症", "用法及用量", "副作用/不良反應"]
+    assert titles_l1 == [
+        "性狀",
+        "適應症",
+        "用法及用量",
+        "副作用/不良反應",
+        "特殊族群之用藥",
+        "過量",
+        "臨床試驗資料",
+        "藥品保存",
+        "病人使用須知",
+        "其他",
+        "未來新欄位",
+    ]
 
     xingzhuang = insert.sections[0]
-    assert [c.title for c in xingzhuang.children] == ["有效成分及含量", "藥品外觀"]
+    assert [c.title for c in xingzhuang.children] == ["有效成分及含量", "賦形劑", "藥品外觀"]
 
     ingredient_subsection = xingzhuang.children[0]
     assert "Amlodipine besylate" in ingredient_subsection.text
@@ -57,7 +69,7 @@ def test_level1_section_with_direct_value(xml_bytes):
 
 def test_image_value_is_skipped(xml_bytes):
     insert = parse_get_drug_doc(xml_bytes)[0]
-    appearance = insert.sections[0].children[1]
+    appearance = next(c for c in insert.sections[0].children if c.number == "1.4")
     assert appearance.title == "藥品外觀"
     assert appearance.text == ""
 

@@ -157,6 +157,70 @@ async def test_get_package_insert_unknown_field_surfaces_error(seeded_settings, 
 
 
 @pytest.mark.asyncio
+async def test_get_package_insert_new_section_fields(seeded_settings, fixtures_dir):
+    """All 8 newly-mapped sections (1.2, 6, 9, 12, 13.2, 13.4, 14, 15) extract correctly."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                fields=[
+                    "excipients",
+                    "special_populations",
+                    "overdose",
+                    "clinical_trials",
+                    "shelf_life",
+                    "storage_cautions",
+                    "patient_instructions",
+                    "other_info",
+                ],
+                settings=seeded_settings,
+            )
+        ).model_dump()
+
+    fields = result["fields"]
+    sections = result["field_sections"]
+
+    assert "微晶纖維素" in fields["excipients"]
+    assert sections["excipients"] == "1.2"
+    assert "孕婦" in fields["special_populations"]
+    assert sections["special_populations"] == "6"
+    assert "支持性治療" in fields["overdose"]
+    assert sections["overdose"] == "9"
+    assert "ALLHAT" in fields["clinical_trials"]
+    assert sections["clinical_trials"] == "12"
+    assert "36 個月" in fields["shelf_life"]
+    assert sections["shelf_life"] == "13.2"
+    assert "避光" in fields["storage_cautions"]
+    assert sections["storage_cautions"] == "13.4"
+    assert "葡萄柚汁" in fields["patient_instructions"]
+    assert sections["patient_instructions"] == "14"
+    assert "健保用藥" in fields["other_info"]
+    assert sections["other_info"] == "15"
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_key_fields_includes_excipients(seeded_settings, fixtures_dir):
+    """excipients is in KEY_FIELDS so default calls surface allergens."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                settings=seeded_settings,
+            )
+        ).model_dump()
+    assert "excipients" in result["fields"]
+    assert "微晶纖維素" in result["fields"]["excipients"]
+
+
+@pytest.mark.asyncio
 async def test_get_package_insert_unsupported_prefix(seeded_settings):
     result = (
         await get_package_insert(
@@ -235,3 +299,34 @@ async def test_check_insert_updates_filters_license_list(seeded_settings, fixtur
     assert results["total"] == 0
     assert results["by_date"] == {}
     assert results["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_surfaces_unmapped_sections(
+    seeded_settings, fixtures_dir
+):
+    """Sections present in XML but not in _SECTION_NUMBERS surface as unmapped_sections.
+
+    Safety net so a future TFDA-added section is not silently dropped (the way
+    1.2 賦形劑 was, before this plan).
+    """
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                settings=seeded_settings,
+            )
+        ).model_dump()
+
+    unmapped = result["unmapped_sections"]
+    # Fixture has section 99 ("未來新欄位") deliberately not in _SECTION_NUMBERS.
+    assert any(u["section_no"] == "99" for u in unmapped), unmapped
+    entry_99 = next(u for u in unmapped if u["section_no"] == "99")
+    assert entry_99["title"] == "未來新欄位"
+    # Sanity: known sections (e.g. 1.1 ingredients) MUST NOT appear here.
+    assert not any(u["section_no"] == "1.1" for u in unmapped)
+    assert not any(u["section_no"] == "2" for u in unmapped)
