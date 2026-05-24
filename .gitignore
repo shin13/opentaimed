@@ -2,10 +2,11 @@
 # These document private project state (session handoffs, agent instructions,
 # personal task lists) and are excluded by intent.
 /CLAUDE.md
-/STATE.md
-/TODO.md
 /HANDOFF.md
 /docs/
+# .private/ is an independent nested git repository for private session state
+# (STATE.md, TODO.md, etc.). The outer repo MUST NOT track it at all.
+/.private/
 
 # Environment / Secrets
 .env
