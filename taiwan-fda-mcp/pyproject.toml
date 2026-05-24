@@ -1,10 +1,25 @@
 [project]
 name = "taiwan-fda-mcp"
 version = "0.1.0"
-description = "Add your description here"
+description = "MCP server exposing Taiwan FDA (TFDA) drug-license and package-insert data to LLM clients. Independent open-source wrapper; not a TFDA product."
 readme = "README.md"
 authors = [
     { name = "shin13", email = "soobahorn@gmail.com" }
+]
+license = { text = "MIT" }
+keywords = ["mcp", "fda", "taiwan", "tfda", "drug-information", "package-insert", "仿單"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Healthcare Industry",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Natural Language :: Chinese (Traditional)",
+    "Natural Language :: English",
 ]
 requires-python = ">=3.13"
 dependencies = [
@@ -14,6 +29,12 @@ dependencies = [
     "pydantic-settings>=2.14.1",
     "python-json-logger>=4.1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/shin13/opentaimed"
+Repository = "https://github.com/shin13/opentaimed"
+Issues = "https://github.com/shin13/opentaimed/issues"
+Changelog = "https://github.com/shin13/opentaimed/blob/main/CHANGELOG.md"
 
 [project.scripts]
 taiwan-fda-mcp-server = "taiwan_fda_mcp.mcp_server:main"

@@ -2,6 +2,16 @@
 
 MCP server exposing Taiwan FDA drug information (仿單 + 許可證 metadata) to any MCP-compatible client.
 
+> [!IMPORTANT]
+> **This is NOT an official Taiwan FDA product.** It is an independent
+> open-source wrapper around public TFDA APIs (`mcp.fda.gov.tw` GetDrugDoc +
+> `data.fda.gov.tw` opendata). The TFDA does not endorse, review, or maintain
+> this software. Data is reproduced from upstream TFDA endpoints without
+> modification of clinical content, but **always verify against the official
+> source** (`source_url` / `human_url` are returned with every response)
+> before any clinical decision. This software is not a medical device and
+> not a clinical decision support system.
+
 ## Tools
 
 - `search_drugs(query, search_by, limit)` — substring search across name / ingredient / license number
