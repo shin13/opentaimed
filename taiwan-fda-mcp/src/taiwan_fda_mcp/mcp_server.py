@@ -29,6 +29,23 @@ mcp: FastMCP = FastMCP(
     name="taiwan-fda-mcp",
     instructions=(
         # Chinese fullwidth punctuation is intentional — per-line noqa: RUF001 below.
+        "MANDATORY RULES for Taiwan drug queries (任何台灣藥物查詢必須遵守):\n"
+        "  - For ANY question about a Taiwan-marketed drug — by Chinese name, "
+        "English brand name, active ingredient, or license number — you MUST "
+        "call `search_drugs` FIRST before answering. Do NOT answer from "
+        "training data, even if you recognise the drug name.\n"
+        "  - A drug name in your training data may correspond to a DIFFERENT "
+        "active ingredient under Taiwan licensing (brand-name collisions "
+        "across markets, generics renamed locally, etc.). The only reliable "
+        "resolution path is: `search_drugs` → pick license_no → "
+        "`get_package_insert`. Skipping step 1 has produced wrong-drug "
+        "answers in practice (e.g. answering about Metoprolol when asked "
+        "about 脈優 / Amlodipine).\n"
+        "  - If `search_drugs` returns zero results, say so explicitly "
+        "(\"查無此藥 on TFDA\") — do NOT guess from training data.\n"
+        "  - If any tool returns an error, report the error verbatim. Do NOT "
+        "silently fall back to training data; the user needs to know when "
+        "official data was unavailable.\n\n"
         "查詢台灣食藥署 (TFDA) 維護的官方藥物資訊：藥品許可證、仿單章節、更新追蹤。\n\n"  # noqa: RUF001
         "本 server 為個人開發者專案，**非台灣政府官方產品**，僅作為 TFDA 公開資料"  # noqa: RUF001
         "(data.fda.gov.tw Dataset 37 + mcp.fda.gov.tw GetDrugDoc API) 的查詢介面，"  # noqa: RUF001
