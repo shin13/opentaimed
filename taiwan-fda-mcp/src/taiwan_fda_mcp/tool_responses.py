@@ -77,6 +77,15 @@ class UnknownFieldInfo(BaseModel):
     )
 
 
+_UNMAPPED_SECTION_NOTE = (
+    "This section exists in the FDA XML but the wrapper has no field name for "
+    "it yet. Do NOT invent a mapping to any field listed in `fields` — those "
+    "mappings are authoritative and would already include this section if it "
+    "matched. Direct the user to `human_url` for the official text of this "
+    "section."
+)
+
+
 class UnmappedSectionInfo(BaseModel):
     """One TFDA insert section present in the XML but not yet mapped to a field name.
 
@@ -89,6 +98,15 @@ class UnmappedSectionInfo(BaseModel):
 
     section_no: str = Field(description="Section number as it appears in the FDA XML (e.g. '1.2', '16').")
     title: str = Field(description="Section title from the FDA XML (Traditional Chinese).")
+    note: str = Field(
+        default=_UNMAPPED_SECTION_NOTE,
+        description=(
+            "Constant safety-net guidance for LLM clients — identical in every "
+            "entry. Surfaced as a payload field (not just schema docs) because "
+            "live testing showed LLMs ignored description-only guidance and "
+            "fabricated mappings between unmapped sections and `fields` keys."
+        ),
+    )
 
 
 class InsertVersionInfo(BaseModel):
