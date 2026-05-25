@@ -8,17 +8,43 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-- Top-level `README.md`, `LICENSE` (MIT), `SECURITY.md`, `CHANGELOG.md`.
-- Minimal GitHub Actions test workflow (`.github/workflows/test.yml`).
+- Top-level `README.md`, `LICENSE` (MIT + clinical disclaimer),
+  `SECURITY.md`, `CHANGELOG.md`.
+- Public `CLAUDE.md` — contributor and AI-agent alignment document with
+  a "Quick Reference: I want to..." table mapping common tasks to files
+  and ADRs.
+- `docs/adr/` — Architecture Decision Records (ADR-0001 dual-API
+  strategy, ADR-0002 directive server instructions, ADR-0003
+  Dataset 37 over lmspiq, ADR-0004 MIT + clinical disclaimer,
+  ADR-0005 `.private/` nested repo) + template + index.
+- GitHub Actions workflow `test.yml` running ruff + pyright + pytest
+  with least-privilege `permissions: contents: read`.
+- GitHub Actions workflow `gitleaks.yml` — secret scan on every push,
+  every PR, and a weekly scheduled baseline run against full history.
+- `.pre-commit-config.yaml` wiring gitleaks as a local pre-commit hook
+  for any contributor who runs `pre-commit install`.
 
 ### Changed
-- `taiwan-fda-mcp/README.md` now leads with a non-official-wrapper disclaimer.
-- `taiwan-fda-mcp/pyproject.toml` metadata filled in for public release
-  (description, license, urls, classifiers).
+- `taiwan-fda-mcp/README.md` now leads with a non-official-wrapper
+  disclaimer banner.
+- `taiwan-fda-mcp/pyproject.toml` metadata filled in for public
+  release (description, MIT license, urls, classifiers, keywords).
+
+### Security
+- Repo went public at `github.com/shin13/opentaimed`. Git history was
+  rewritten via `git filter-repo` before the public force-push to
+  remove pre-public working-memory paths (`STATE.md`, `TODO.md`,
+  `CLAUDE.md`, `docs/`) and `Co-Authored-By: Claude` trailers from
+  every commit.
+- Branch ruleset `Protect main` enforces PR-only updates, required
+  status check (`taiwan-fda-mcp`), conversation resolution, blocked
+  force-pushes, and blocked deletions. No bypass, including admin.
 
 ### Internal-only (not in published repo)
-- `STATE.md`, `TODO.md`, `CLAUDE.md`, and `docs/` are gitignored — these are
-  working-memory artefacts, not public documentation.
+- `STATE.md`, `TODO.md`, `HANDOFF.md`, and the bulk of `docs/` are
+  gitignored — these are working-memory artefacts, not public
+  documentation. They live in a nested `.private/` git repo (see
+  ADR-0005). Only `docs/adr/` is whitelisted into the public tree.
 
 ## [0.1.0] — 2026-05-25 — `taiwan-fda-mcp` first public-ready cut
 
