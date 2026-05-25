@@ -1,7 +1,10 @@
 # Internal-only / working-memory files — not published to the public repo.
-# These document private project state (session handoffs, agent instructions,
-# personal task lists) and are excluded by intent.
-/CLAUDE.md
+# These document private project state (session handoffs, personal task
+# lists, etc.) and are excluded by intent.
+#
+# `/CLAUDE.md` is intentionally NOT listed here — the public, cleaned-up
+# project agent instructions are tracked. Personal cross-project memory
+# stays in `~/.claude/CLAUDE.md`.
 /HANDOFF.md
 # Exclude docs/ contents by default, then whitelist the public surface.
 # Anything not whitelisted stays gitignored (research/, sources/,
