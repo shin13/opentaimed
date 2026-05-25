@@ -465,27 +465,36 @@ def _collect_unmapped_sections(
     sections: list[InsertSection],
     mapped_numbers: set[str],
 ) -> list[UnmappedSectionInfo]:
-    """List leaf sections whose `number` is not in `mapped_numbers` and which have text.
+    """List sections whose number AND whose closest ancestor number are unmapped.
 
     Used to surface XML coverage gaps to callers (see UnmappedSectionInfo docstring).
-    A "leaf" here = has text or is a deepest-level node. Top-level container
-    sections (e.g. section 1 "性狀" with only child sections) are skipped because
-    their children carry the actual content.
+    Ancestor check: when a parent section number (e.g. "10") is mapped to a field
+    (e.g. `pharmacology`), `_section_text` walks descendants and folds their text
+    into the parent's field. Listing the descendants here would be a false positive
+    — the data IS returned, just under the parent field. Only surface sub-sections
+    when their parent path is also unmapped (i.e. genuine gaps).
     """
     out: list[UnmappedSectionInfo] = []
 
+    def has_mapped_ancestor(number: str) -> bool:
+        """Is any dot-prefix of `number` in mapped_numbers? e.g. "10.1" → check "10"."""
+        parts = number.split(".")
+        return any(
+            ".".join(parts[:i]) in mapped_numbers for i in range(len(parts) - 1, 0, -1)
+        )
+
     def walk(section: InsertSection) -> None:
-        # Recurse into children regardless — they may be unmapped even if parent is.
         for child in section.children:
             walk(child)
-        # A section is "interesting" if it has its own text content.
-        # Container sections (only children, no text) are not interesting on their own.
-        if section.text and section.number not in mapped_numbers:
+        if (
+            section.text
+            and section.number not in mapped_numbers
+            and not has_mapped_ancestor(section.number)
+        ):
             out.append(UnmappedSectionInfo(section_no=section.number, title=section.title))
 
     for s in sections:
         walk(s)
-    # Stable sort by section number string (simple — lexicographic is acceptable for diagnostics).
     out.sort(key=lambda u: u.section_no)
     return out
 
