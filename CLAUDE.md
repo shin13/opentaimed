@@ -219,18 +219,29 @@ not be silently dropped when a future component is implemented.
 
 ### CI/CD
 
-Current (`.github/workflows/test.yml`):
+Current:
 
-- Runs on push to `main` and on every pull request.
-- Steps: `uv sync --frozen` → `ruff check` → `pyright src` → `pytest -v`.
-- Workflow declares `permissions: contents: read` — least-privilege
+- `.github/workflows/test.yml` — `uv sync --frozen` → `ruff check` →
+  `pyright src` → `pytest -v`. Runs on push to `main` and on every PR.
+- `.github/workflows/gitleaks.yml` — gitleaks secret-scan. Runs on
+  push, every PR, and a weekly scheduled full-history baseline scan
+  (Monday 18:00 UTC = Tuesday 02:00 Taipei).
+- Both workflows declare `permissions: contents: read` — least-privilege
   token, cannot push or publish.
+- `.pre-commit-config.yaml` wires gitleaks as a local pre-commit hook.
+  Contributors run `pre-commit install` once after clone; on macOS
+  Tahoe, install pre-commit via `uv tool install pre-commit` rather
+  than brew (brew-bundled Python tools get SIGKILL'd by Gatekeeper).
+
+Branch protection: a repository ruleset enforces PR-only updates to
+`main` (no direct push, no force-push, no deletion) with required
+status check `taiwan-fda-mcp` and required conversation resolution.
+No bypass list, including admin.
 
 Planned:
 
-- `security.yml` with gitleaks secret-scan + dependency audit
-  (per-PR + weekly schedule).
-- Dependabot weekly auto-merge for minor / patch upgrades.
+- Dependency audit (`pip-audit` or similar) on a weekly schedule.
+- Dependabot for minor / patch dep upgrades.
 - Pinned actions by commit SHA rather than version tag.
 
 ## Source Expansion Pattern
