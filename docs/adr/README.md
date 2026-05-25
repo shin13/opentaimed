@@ -31,3 +31,4 @@ session-state notes kept in `.private/`.
 | [0003](./0003-search-via-dataset37-not-lmspiq.md) | `search_drugs` is backed by opendata Dataset 37, not lmspiq scraping | Accepted |
 | [0004](./0004-mit-license-with-clinical-disclaimer.md) | MIT License with a separate informational clinical disclaimer | Accepted |
 | [0005](./0005-private-nested-repo-pattern.md) | `.private/` as a nested independent git repository | Accepted |
+| [0006](./0006-flat-response-schema-alignment-with-healthcare-mcp-norms.md) | Flat response schema for `get_package_insert`, aligned with healthcare MCP norms | Accepted |
