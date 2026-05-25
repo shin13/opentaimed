@@ -1,0 +1,36 @@
+name: gitleaks
+
+# Scan every push and PR for accidentally-committed secrets, plus a weekly
+# baseline run against the full history in case a new gitleaks rule catches
+# something that older versions missed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 18 * * 1"   # Monday 18:00 UTC = Tuesday 02:00 Taipei
+  workflow_dispatch:
+
+# Least-privilege — read source and post check results, nothing else.
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: gitleaks scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks-action needs the full history to scan every commit on PRs
+          # and on the scheduled baseline run.
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No GITLEAKS_LICENSE needed: gitleaks-action is free for personal
+          # accounts and for public repositories. See:
+          # https://github.com/gitleaks/gitleaks-action#-pricing
