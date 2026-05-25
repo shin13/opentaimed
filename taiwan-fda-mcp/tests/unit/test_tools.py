@@ -330,3 +330,69 @@ async def test_get_package_insert_surfaces_unmapped_sections(
     # Sanity: known sections (e.g. 1.1 ingredients) MUST NOT appear here.
     assert not any(u["section_no"] == "1.1" for u in unmapped)
     assert not any(u["section_no"] == "2" for u in unmapped)
+
+
+@pytest.mark.asyncio
+async def test_unmapped_sections_suppresses_mapped_parent_subsections(
+    seeded_settings,
+):
+    """Sub-sections whose parent section is mapped must NOT appear in unmapped_sections.
+
+    Example: section 10 'pharmacology' is mapped. The XML walker for that field
+    already collects 10.1/10.2/10.3 descendants, so listing 10.1 in
+    unmapped_sections would be a false positive — implying data is missing
+    when it is in fact returned via the parent field.
+    """
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<ROOTDOCUMENT>
+  <DOCUMENT>
+    <INFO>
+      <SNO>衛署藥輸字第000001號</SNO>
+      <CNAME>測試藥</CNAME>
+      <ENAME>TESTDRUG</ENAME>
+      <DTYPE>須由醫師處方使用</DTYPE>
+      <SNAME></SNAME>
+      <VERSION>1</VERSION>
+      <VDATE>2026-01-01</VDATE>
+    </INFO>
+    <CONTENT>
+      <SECTION LEVEL="1" ID="10">
+        <NO>10</NO>
+        <TITLE>藥理特性</TITLE>
+        <SECTION LEVEL="2" ID="10.1">
+          <NO>10.1</NO>
+          <TITLE>作用機轉</TITLE>
+          <VALUE type="text">&lt;p&gt;阻斷鈣離子通道。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="10.2">
+          <NO>10.2</NO>
+          <TITLE>藥效藥理特性</TITLE>
+          <VALUE type="text">&lt;p&gt;血壓降低。&lt;/p&gt;</VALUE>
+        </SECTION>
+      </SECTION>
+      <SECTION LEVEL="1" ID="99">
+        <NO>99</NO>
+        <TITLE>未來新欄位</TITLE>
+        <VALUE type="text">&lt;p&gt;假章節。&lt;/p&gt;</VALUE>
+      </SECTION>
+    </CONTENT>
+  </DOCUMENT>
+</ROOTDOCUMENT>
+""".encode()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第000001號",
+                settings=seeded_settings,
+            )
+        ).model_dump()
+
+    unmapped_numbers = {u["section_no"] for u in result["unmapped_sections"]}
+    # 99 should appear (truly unmapped, no mapped parent).
+    assert "99" in unmapped_numbers, unmapped_numbers
+    # 10.1 and 10.2 must NOT appear (parent 10 is mapped → walker covers them).
+    assert "10.1" not in unmapped_numbers, unmapped_numbers
+    assert "10.2" not in unmapped_numbers, unmapped_numbers
