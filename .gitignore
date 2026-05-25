@@ -3,7 +3,13 @@
 # personal task lists) and are excluded by intent.
 /CLAUDE.md
 /HANDOFF.md
-/docs/
+# Exclude docs/ contents by default, then whitelist the public surface.
+# Anything not whitelisted stays gitignored (research/, sources/,
+# superpowers/, source-materials/, …) as private exploration scratch.
+# (Git cannot re-include files under a fully-excluded parent directory,
+#  so we exclude contents with /docs/* instead of the dir itself.)
+/docs/*
+!/docs/adr/
 # .private/ is an independent nested git repository for private session state
 # (STATE.md, TODO.md, etc.). The outer repo MUST NOT track it at all.
 /.private/
