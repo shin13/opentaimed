@@ -7,6 +7,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least-privilege: this CI only reads code and runs unit tests. It does not
+# write to the repo, push images, or call external services with credentials.
+# Explicit `contents: read` overrides the default `contents: write` token that
+# GitHub Actions would otherwise grant, closing a supply-chain attack path
+# where a compromised dependency or action could push to the repo.
+permissions:
+  contents: read
+
 jobs:
   taiwan-fda-mcp:
     name: taiwan-fda-mcp
