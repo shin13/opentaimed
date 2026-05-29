@@ -41,6 +41,7 @@ from taiwan_fda_mcp.tool_responses import (
     ImageRef,
     InsertVersionInfo,
     SearchDrugsResponse,
+    SectionTocEntry,
     UnknownFieldInfo,
     UpdateEntry,
 )
@@ -64,7 +65,9 @@ _ATTRIBUTION = Attribution(
 # Pre-section fields sourced from top-level <WARNING> / <CHARACT> XML elements —
 # always returned (even when empty) so the LLM gets a positive "TFDA confirms
 # absent" signal via `confirmed_absent`, distinct from "tool failed to fetch".
-_ALWAYS_PRESENT_FIELDS: tuple[str, ...] = ("special_warning", "characteristics")
+# OTC has no <WARNING>/BBW slot, so only characteristics is always-present there.
+_RX_ALWAYS_PRESENT_FIELDS: tuple[str, ...] = ("special_warning", "characteristics")
+_OTC_ALWAYS_PRESENT_FIELDS: tuple[str, ...] = ("characteristics",)
 
 RX_KEY_FIELDS: list[str] = [
     "indication",
@@ -138,14 +141,63 @@ RX_FIELDS: list[str] = [
     "other_info",
 ]
 
+# OTC (非處方藥) field space — disjoint section meanings vs Rx (ADR-0007 §2,
+# Strategy B). Field names are distinct where semantics differ (usage ≠ Rx
+# indication, directions ≠ Rx dosage, otc_warnings ≠ Rx warnings) and shared
+# where identical (ingredients / excipients / packaging / characteristics).
+OTC_KEY_FIELDS: list[str] = [
+    "usage",
+    "directions",
+    "otc_warnings",
+    "ingredients",
+    "last_update_date",
+]
+
+OTC_FIELDS: list[str] = [
+    # INFO block fields
+    "name_zh",
+    "name_en",
+    "license_no",
+    "insert_version",
+    "last_update_date",
+    # Dataset 37 fields (with XML fallback when row missing from cache)
+    "applicant",
+    "manufacturer",
+    "form",
+    "drug_class",
+    "valid_until",
+    # Pre-section (OTC: characteristics only — no <WARNING>/BBW in OTC structure)
+    "characteristics",
+    # CONTENT — OTC structure (parents + sub-sections)
+    "ingredients",
+    "excipients",
+    "usage",
+    "usage_precautions",
+    "do_not_use",
+    "consult_doctor_before_use",
+    "consult_pharmacist_before_use",
+    "usage_other_precautions",
+    "directions",
+    "otc_warnings",
+    "adverse_warning",
+    "symptom_warning",
+    "packaging",
+]
+
 ResponseFormat = Literal["concise", "key", "detailed", "full"]
 
-# Field set per response_format. `fields=` (explicit) overrides this when set.
-_RESPONSE_FORMAT_FIELDS: dict[ResponseFormat, list[str]] = {
+# Field set per response_format, per format. `fields=` (explicit) overrides this.
+_RX_RESPONSE_FORMAT_FIELDS: dict[ResponseFormat, list[str]] = {
     "concise": ["name_zh", "indication", "special_warning", "last_update_date"],
     "key": RX_KEY_FIELDS,
     "detailed": RX_FIELDS,
     "full": RX_FIELDS,  # entity lists + image data_url additionally surfaced (not via fields)
+}
+_OTC_RESPONSE_FORMAT_FIELDS: dict[ResponseFormat, list[str]] = {
+    "concise": ["name_zh", "usage", "last_update_date"],
+    "key": OTC_KEY_FIELDS,
+    "detailed": OTC_FIELDS,
+    "full": OTC_FIELDS,
 }
 
 # OTC discriminator categories (ADR-0007 附錄二). Anything else is Rx.
@@ -280,32 +332,45 @@ async def get_package_insert(
     fmt = _classify_format(insert)
     is_full = response_format == "full"
 
-    field_list = _resolve_fields(fields, response_format)
-    known_fields = set(RX_FIELDS)
+    # Dispatch the field space by format (ADR-0007 Strategy B). OTC reuses
+    # numeric <NO> with different meanings, and carries content in nested
+    # <TITLE>s, so it needs a separate section map + title-folding extraction.
+    is_otc = fmt == "otc"
+    section_numbers = _OTC_SECTION_NUMBERS if is_otc else _RX_SECTION_NUMBERS
+    all_fields = OTC_FIELDS if is_otc else RX_FIELDS
+    always_present = _OTC_ALWAYS_PRESENT_FIELDS if is_otc else _RX_ALWAYS_PRESENT_FIELDS
+
+    field_list = _resolve_fields(fields, response_format, is_otc=is_otc)
+    known_fields = set(all_fields)
     field_values: dict[str, str] = {}
     field_sections: dict[str, str] = {}
     unknown_fields: list[UnknownFieldInfo] = []
     for f in field_list:
         if f not in known_fields:
-            close = difflib.get_close_matches(f, RX_FIELDS, n=1, cutoff=0.6)
+            close = difflib.get_close_matches(f, all_fields, n=1, cutoff=0.6)
             unknown_fields.append(
                 UnknownFieldInfo(input=f, did_you_mean=close[0] if close else None)
             )
             continue
-        value = _extract_field(f, insert=insert, license_row=license_row)
+        value = _extract_field(
+            f, insert=insert, license_row=license_row, section_numbers=section_numbers, fold_titles=is_otc
+        )
         # Always-present pre-section fields stay in `fields` even when empty
         # (positive "TFDA confirms absent" signal); others only when non-empty.
-        if value or f in _ALWAYS_PRESENT_FIELDS:
+        if value or f in always_present:
             field_values[f] = value
-            section_no = _RX_SECTION_NUMBERS.get(f)
+            section_no = section_numbers.get(f)
             if section_no:
                 field_sections[f] = section_no
 
     confirmed_absent = [
-        f for f in _ALWAYS_PRESENT_FIELDS if f in field_values and not field_values[f]
+        f for f in always_present if f in field_values and not field_values[f]
     ]
 
-    additional = _build_additional_sections(insert.sections, set(_RX_SECTION_NUMBERS.values()))
+    additional = _build_additional_sections(insert.sections, set(section_numbers.values()))
+    available = _build_section_toc(
+        insert.sections, {v: k for k, v in section_numbers.items()}, fold_titles=is_otc
+    )
     images = _build_images(insert.sections, include_data=is_full)
     main_factories = _build_factories(insert.main_factory) if is_full else []
     sub_factories = _build_factories(insert.sub_factories) if is_full else []
@@ -330,6 +395,7 @@ async def get_package_insert(
         unknown_fields=unknown_fields if unknown_fields else None,
         confirmed_absent=confirmed_absent,
         additional_sections=additional,
+        available_sections=available,
         images=images,
         main_factories=main_factories,
         sub_factories=sub_factories,
@@ -453,22 +519,25 @@ async def _find_license_row(license_no: str, settings: Settings) -> DrugLicense 
 def _resolve_fields(
     fields: list[str] | Literal["all", "key_fields"] | None,
     response_format: ResponseFormat,
+    *,
+    is_otc: bool,
 ) -> list[str]:
     if fields is None:
-        return list(_RESPONSE_FORMAT_FIELDS[response_format])
+        rf_map = _OTC_RESPONSE_FORMAT_FIELDS if is_otc else _RX_RESPONSE_FORMAT_FIELDS
+        return list(rf_map[response_format])
     if fields == "key_fields":
-        return list(RX_KEY_FIELDS)
+        return list(OTC_KEY_FIELDS if is_otc else RX_KEY_FIELDS)
     if fields == "all":
-        return list(RX_FIELDS)
+        return list(OTC_FIELDS if is_otc else RX_FIELDS)
     return list(fields)
 
 
 def _classify_format(insert: DrugInsert) -> Literal["rx", "otc"]:
     """Dispatch Rx vs OTC from <DTYPE> (ADR-0007 附錄二), with a structural check.
 
-    Note: in this phase the OTC field space is not yet built — `format` is
-    surfaced for transparency, but extraction always uses the Rx map. OTC
-    dispatch lands in Phase 3.2.
+    `成藥`/指示藥 categories → OTC (separate field space + title-folding
+    extraction); everything else → Rx. A structural cross-check (§1 title ==
+    "成分") logs a warning on mismatch so a miscategorised insert is visible.
     """
     fmt: Literal["rx", "otc"] = "otc" if insert.drug_type in _OTC_CATEGORIES else "rx"
     first = insert.sections[0] if insert.sections else None
@@ -543,14 +612,53 @@ _RX_SECTION_NUMBERS: dict[str, str] = {
     "other_info": "15",
 }
 
+# Section number per OTC CONTENT field (ADR-0007 §2 / 衛福部 105.03.08 公告).
+# OTC reuses numeric <NO> with DIFFERENT meanings than Rx — hence a separate
+# dict dispatched by <DTYPE>. §7+ tail (儲存方式/類別/許可證號/急救…) is NOT named;
+# it flows through additional_sections with text.
+_OTC_SECTION_NUMBERS: dict[str, str] = {
+    # Section 1 — 成分
+    "ingredients": "1.1",
+    "excipients": "1.2",
+    # Section 2 — 用途(適應症)  ← distinct from Rx `indication`
+    "usage": "2",
+    # Section 3 — 使用上注意事項 (parent + sub-sections; OTC-only)
+    "usage_precautions": "3",
+    "do_not_use": "3.1",
+    "consult_doctor_before_use": "3.2",
+    "consult_pharmacist_before_use": "3.3",
+    "usage_other_precautions": "3.4",
+    # Section 4 — 用法用量  ← distinct from Rx `dosage`
+    "directions": "4",
+    # Section 5 — 警語 (parent + sub-sections)  ← distinct from Rx `warnings`
+    "otc_warnings": "5",
+    "adverse_warning": "5.1",
+    "symptom_warning": "5.2",
+    # Section 6 — 包裝
+    "packaging": "6",
+}
+
+# Invariant: within each format, every section number maps from at most one field
+# (the TOC inverts these dicts, which would silently drop entries on collision).
+for _fmt_name, _fmt_map in (("rx", _RX_SECTION_NUMBERS), ("otc", _OTC_SECTION_NUMBERS)):
+    assert len(set(_fmt_map.values())) == len(_fmt_map), (
+        f"duplicate section numbers in {_fmt_name} map"
+    )
+
 
 def _extract_field(  # noqa: PLR0911, PLR0912
     field: str,
     *,
     insert: DrugInsert,
     license_row: DrugLicense | None,
+    section_numbers: dict[str, str],
+    fold_titles: bool,
 ) -> str:
-    """Resolve one field name to text. Read top-down: each field has one home."""
+    """Resolve one field name to text. Read top-down: each field has one home.
+
+    `section_numbers` is the active format's section map (Rx or OTC) and
+    `fold_titles` enables OTC's nested-<TITLE> content folding.
+    """
     # INFO block — always present in GetDrugDoc response
     if field == "name_zh":
         return insert.name_zh
@@ -596,9 +704,9 @@ def _extract_field(  # noqa: PLR0911, PLR0912
 
     # CONTENT section-based fields — strip HTML to plain text. Saves ~75% tokens
     # and prevents the LLM from leaking raw <p style="..."> markup into responses.
-    section_no = _RX_SECTION_NUMBERS.get(field)
+    section_no = section_numbers.get(field)
     if section_no:
-        return html_to_text(_section_text(insert.sections, section_no))
+        return _field_text(insert.sections, section_no, fold_titles=fold_titles)
 
     return ""
 
@@ -693,27 +801,87 @@ def _build_companies(entities: list[dict[str, str]]) -> list[CompanyEntity]:
     ]
 
 
-def _section_text(sections: list[InsertSection], wanted_number: str) -> str:
-    """Find a section by number; return its text + descendants' text concatenated."""
-    parts: list[str] = []
+def _build_section_toc(
+    sections: list[InsertSection],
+    section_to_field: dict[str, str],
+    *,
+    fold_titles: bool,
+) -> list[SectionTocEntry]:
+    """Build a flat TOC of every section that carries content or is a named field.
+
+    A section is listed if it has its own <VALUE> text OR maps to a wrapper field
+    (so OTC §3.x, whose content is title-borne, still appears). `char_count` is the
+    length of the resolved (folded for OTC) text; `field_name` comes from the
+    inverse of the active section map (None for unmapped/tail sections).
+    """
+    out: list[SectionTocEntry] = []
+
+    def walk(section: InsertSection) -> None:
+        for child in section.children:
+            walk(child)
+        field_name = section_to_field.get(section.number)
+        if section.text or field_name is not None:
+            text = _resolve_section_text(section, fold_titles=fold_titles)
+            out.append(
+                SectionTocEntry(
+                    section_no=section.number,
+                    title=section.title,
+                    char_count=len(text),
+                    field_name=field_name,
+                )
+            )
+
+    for s in sections:
+        walk(s)
+    out.sort(key=lambda e: e.section_no)
+    return out
+
+
+def _find_section(sections: list[InsertSection], wanted: str) -> InsertSection | None:
+    """Depth-first search for the first section whose number == `wanted`."""
     for section in sections:
-        _walk(section, wanted_number, parts)
+        if section.number == wanted:
+            return section
+        found = _find_section(section.children, wanted)
+        if found is not None:
+            return found
+    return None
+
+
+def _resolve_section_text(section: InsertSection, *, fold_titles: bool) -> str:
+    """Plain text of a section's whole subtree.
+
+    Collects each node's <VALUE> text. When `fold_titles` (OTC), a node with no
+    <VALUE> contributes its <TITLE> instead — OTC inserts carry content in nested
+    <TITLE> elements (e.g. §3.1.1 「曾因本藥成分引起過敏的人。」). Nodes with a blank
+    <NO> (the malformed duplicate placeholders in some OTC §5 警語 blocks) are
+    skipped to avoid double-rendering.
+    """
+    parts: list[str] = []
+
+    def collect(s: InsertSection) -> None:
+        if s.number == "" and s is not section:
+            return
+        if s.text:
+            parts.append(html_to_text(s.text))
+        elif fold_titles and s.title:
+            parts.append(s.title)
+        for child in s.children:
+            collect(child)
+
+    collect(section)
     return "\n\n".join(p for p in parts if p)
 
 
-def _walk(section: InsertSection, wanted: str, out: list[str]) -> None:
-    if section.number == wanted:
-        if section.text:
-            out.append(section.text)
-        for child in section.children:
-            if child.text:
-                out.append(child.text)
-        return
-    for child in section.children:
-        _walk(child, wanted, out)
+def _field_text(sections: list[InsertSection], wanted_number: str, *, fold_titles: bool) -> str:
+    """Resolve a named field's section number to its full subtree text."""
+    node = _find_section(sections, wanted_number)
+    return _resolve_section_text(node, fold_titles=fold_titles) if node else ""
 
 
 __all__ = [
+    "OTC_FIELDS",
+    "OTC_KEY_FIELDS",
     "RX_FIELDS",
     "RX_KEY_FIELDS",
     "check_insert_updates",
