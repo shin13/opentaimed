@@ -8,6 +8,33 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **Full-fidelity Rx + OTC insert coverage** in `get_package_insert`
+  (ADR-0006 flat schema + ADR-0007 dual-format):
+  - All 21 Rx sub-section fields (§3.x / §5.x / §6.x / §8.x / §10.x),
+    individually addressable and citable by section number.
+  - `special_warning` (top-level `<WARNING>` = 加框警語 / BBW) and
+    `characteristics` (`<CHARACT>`) pre-section fields, with a MUST-quote
+    server-instructions rule for `special_warning`.
+  - `confirmed_absent` — distinguishes "TFDA structurally confirms no BBW"
+    from "tool failed to fetch".
+  - `response_format` enum (`concise` / `key` / `detailed` / `full`);
+    entity lists (`main_factories` / `sub_factories` / `companies`) and
+    image `data_url` payloads surface only on `full`.
+  - `format` discriminator (`rx` / `otc`) dispatched from `<DTYPE>`.
+  - `additional_sections` (section_no + title + verbatim text) — replaces
+    the older `unmapped_sections` safety net.
+  - `images` metadata (always) with base64 `data_url` (on `full`); parser
+    now retains `<VALUE type="image">` payloads with a mime fallback.
+  - OTC field space (`usage` / `usage_precautions` / `directions` /
+    `otc_warnings` + shared `ingredients` / `excipients` / `packaging`);
+    OTC §3/§5 exposed via stable parents (sub-numbering varies per drug).
+  - `available_sections` per-call table of contents over every populated
+    section (fixed fields + tail), so clients never assume `fields` is
+    exhaustive.
+  - `LICENSE_PREFIX_MAP` expanded 7 → 27 prefixes (fixes the OTC-prefix
+    crash on `衛署成製字…`).
+- MCP Resources `structure://rx-insert` and `structure://otc-insert` —
+  TFDA insert structure + field-name maps, lazy-loaded by capable clients.
 - Top-level `README.md`, `LICENSE` (MIT + clinical disclaimer),
   `SECURITY.md`, `CHANGELOG.md`.
 - Public `CLAUDE.md` — contributor and AI-agent alignment document with
