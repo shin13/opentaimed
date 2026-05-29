@@ -110,4 +110,5 @@ async def test_otc_structure_resource_listed_and_readable():
         assert "【用法用量】" in text
         # real OTC field-name map (no longer a placeholder)
         assert "usage" in text
-        assert "do_not_use" in text
+        assert "usage_precautions" in text
+        assert "otc_warnings" in text

@@ -625,30 +625,26 @@ async def test_otc_dispatch_and_coverage(seeded_settings, fixtures_dir):
 
 
 @pytest.mark.asyncio
-async def test_otc_title_borne_content_is_folded(seeded_settings, fixtures_dir):
-    """OTC §3.x / §5.2 content lives in nested <TITLE>s — it MUST be surfaced.
+async def test_otc_title_borne_content_folds_into_stable_parents(seeded_settings, fixtures_dir):
+    """OTC §3/§5 content lives in nested <TITLE>s — folded into the stable parents.
 
-    Without title-folding these safety-critical precautions would be silently
-    dropped (empty field + suppressed from additional_sections).
+    §3.x / §5.x sub-numbering varies per drug (live-verified 2026-05-30), so only
+    the parents usage_precautions / otc_warnings are named; title-folding keeps
+    every sub-item's safety-critical text inside them.
     """
     result = await _fetch_otc(seeded_settings, fixtures_dir, fields="all")
     fields = result["fields"]
-    # §3.1 請勿使用 — content "曾因本藥成分引起過敏的人。" is a leaf <TITLE>.
-    assert "過敏" in fields["do_not_use"]
-    assert result["field_sections"]["do_not_use"] == "3.1"
-    # §3.4 其他注意事項 — 13 leaf-title items, incl. the外用-not-internal warning.
-    assert "不得內服" in fields["usage_other_precautions"]
-    # §5.2 症狀警示 — leaf-title children incl. anaphylaxis red flags.
-    assert "呼吸困難" in fields["symptom_warning"]
-    assert result["field_sections"]["symptom_warning"] == "5.2"
-
-
-@pytest.mark.asyncio
-async def test_otc_adverse_warning_from_value_table(seeded_settings, fixtures_dir):
-    """§5.1 副作用警示 carries a <VALUE> HTML table (the real 5.1, not the blank-NO placeholder)."""
-    result = await _fetch_otc(seeded_settings, fixtures_dir, fields="all")
-    assert "紅斑" in result["fields"]["adverse_warning"]
-    assert result["field_sections"]["adverse_warning"] == "5.1"
+    # §3 parent folds 3.1 請勿使用 (過敏) + 3.4 其他 (外用-not-internal warning).
+    assert "過敏" in fields["usage_precautions"]
+    assert "不得內服" in fields["usage_precautions"]
+    assert result["field_sections"]["usage_precautions"] == "3"
+    # §5 parent folds the §5.1 副作用 table (紅斑) + §5.2 症狀 anaphylaxis red flags.
+    assert "紅斑" in fields["otc_warnings"]
+    assert "呼吸困難" in fields["otc_warnings"]
+    assert result["field_sections"]["otc_warnings"] == "5"
+    # Brittle per-number sub-fields are NOT exposed (they mislabel content across drugs).
+    for dropped in ("do_not_use", "consult_doctor_before_use", "adverse_warning", "symptom_warning"):
+        assert dropped not in fields
 
 
 @pytest.mark.asyncio
@@ -702,12 +698,13 @@ async def test_get_package_insert_returns_available_sections_toc(seeded_settings
 
 
 @pytest.mark.asyncio
-async def test_otc_toc_lists_title_borne_sections(seeded_settings, fixtures_dir):
-    """OTC TOC lists §3.1 do_not_use even though its content is title-borne (no <VALUE>)."""
+async def test_otc_toc_lists_stable_parent_sections(seeded_settings, fixtures_dir):
+    """OTC TOC lists the stable §3 使用上注意事項 parent (folded title content counted)."""
     result = await _fetch_otc(seeded_settings, fixtures_dir)
     toc = {e["section_no"]: e for e in result["available_sections"]}
     assert toc["2"]["field_name"] == "usage"
-    assert toc["3.1"]["field_name"] == "do_not_use"
-    assert toc["3.1"]["char_count"] > 0  # folded title content counted
-    # Leaf title-only sub-items (3.1.1) are NOT listed individually (content under the field).
+    assert toc["3"]["field_name"] == "usage_precautions"
+    assert toc["3"]["char_count"] > 0  # folded §3 sub-item titles counted
+    # §3.x sub-sections are not named fields; title-only ones are not listed individually.
     assert "3.1.1" not in toc
+    assert toc.get("3.1", {}).get("field_name") is None

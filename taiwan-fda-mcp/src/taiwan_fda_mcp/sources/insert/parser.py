@@ -123,6 +123,18 @@ def _parse_section(section_el: ET.Element) -> InsertSection:
     )
 
 
+# Map a filename extension to a MIME type — used only as a fallback when the
+# image VALUE element omits its `mimetype` attribute (observed live 2026-05-30).
+_EXT_MIME: dict[str, str] = {
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "bmp": "image/bmp",
+    "webp": "image/webp",
+}
+
+
 def _parse_image(value_el: ET.Element) -> InsertImage:
     """Build an InsertImage from a `<VALUE type="image" encode="1">` element."""
     data = (value_el.text or "").strip()
@@ -131,10 +143,24 @@ def _parse_image(value_el: ET.Element) -> InsertImage:
     except (binascii.Error, ValueError):
         size_bytes = 0
     return InsertImage(
-        mime=value_el.get("mimetype", ""),
+        mime=_image_mime(value_el),
         size_bytes=size_bytes,
         data=data,
     )
+
+
+def _image_mime(value_el: ET.Element) -> str:
+    """Resolve an image MIME type: explicit `mimetype` → filename extension → octet-stream.
+
+    TFDA usually sets `mimetype`, but some inserts omit it; without a fallback
+    the wrapper would emit a malformed `data:;base64,...` URL.
+    """
+    mime = (value_el.get("mimetype") or "").strip()
+    if mime:
+        return mime
+    filename = (value_el.get("filename") or "").strip()
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return _EXT_MIME.get(ext, "application/octet-stream")
 
 
 def _parse_entities(
