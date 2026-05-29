@@ -152,9 +152,10 @@ meanings than Rx, so OTC has a SEPARATE field set.
 製造廠 / 藥商
 ```
 
-Note: in real OTC XML, the §3.x precautions and §5.2 symptom items often carry
+Note: in real OTC XML, the §3.x precautions and §5.x warning items often carry
 their text in nested `<TITLE>` elements rather than `<VALUE>`. The wrapper folds
-that title-borne content into the owning field so it is not lost.
+that title-borne content (with its sub-heading) into the parent field so it is
+not lost.
 
 ## Wrapper field-name mapping
 
@@ -164,17 +165,17 @@ that title-borne content into the owning field so it is not lost.
 | 1.1 有效成分及含量 | `ingredients` | shared |
 | 1.2 其他成分(賦形劑) | `excipients` | shared |
 | 2 用途(適應症) | `usage` | OTC-only (≠ Rx `indication`) |
-| 3 (整節) | `usage_precautions` | OTC-only |
-| 3.1 請勿使用 | `do_not_use` | OTC-only |
-| 3.2 使用前洽醫師診治 | `consult_doctor_before_use` | OTC-only |
-| 3.3 使用前諮詢醫藥師 | `consult_pharmacist_before_use` | OTC-only |
-| 3.4 其他使用上注意事項 | `usage_other_precautions` | OTC-only |
+| 3 使用上注意事項 (整節) | `usage_precautions` | OTC-only |
 | 4 用法用量 | `directions` | OTC-only (≠ Rx `dosage`) |
-| 5 (整節) | `otc_warnings` | OTC-only (≠ Rx `warnings`) |
-| 5.1 副作用警示 | `adverse_warning` | OTC-only |
-| 5.2 症狀警示 | `symptom_warning` | OTC-only |
+| 5 警語 (整節) | `otc_warnings` | OTC-only (≠ Rx `warnings`) |
 | 6 包裝 | `packaging` | shared |
-| 7+ 儲存方式/類別/急救及解毒方法/… | (none) → `additional_sections` | — |
+| 7+ 儲存方式/類別/適用時機/急救及解毒方法/… | (none) → `additional_sections` | — |
+
+Only the official top-level sections are named. OTC §3.x / §5.x sub-numbering
+varies per drug (one insert's §3.2 is 諮詢藥師, another's is 洽醫師), so naming
+sub-fields by position would mislabel content. Instead §3 / §5 are returned via
+their parents `usage_precautions` / `otc_warnings`, which fold every sub-item's
+text and heading. Cite §3 / §5 (not a sub-number).
 
 OTC inserts have no 加框警語/BBW slot, so `special_warning` is not a valid OTC
 field. Rx-only fields (pharmacokinetics, clinical_trials, etc.) are likewise

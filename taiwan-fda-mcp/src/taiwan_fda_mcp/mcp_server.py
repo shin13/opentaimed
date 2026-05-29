@@ -170,13 +170,14 @@ async def get_package_insert(
             Metadata — last_update_date, insert_version.
             OTC drugs (非處方藥: 成藥/乙類成藥/甲類成藥/指示藥) are detected automatically by
             藥品類別 (<DTYPE>) and use a SEPARATE field set — usage (§2 用途, ≠ Rx indication),
-            directions (§4 用法用量, ≠ Rx dosage), otc_warnings (§5 警語, ≠ Rx warnings),
-            usage_precautions (parent §3) + do_not_use (§3.1) / consult_doctor_before_use (§3.2) /
-            consult_pharmacist_before_use (§3.3) / usage_other_precautions (§3.4),
-            adverse_warning (§5.1) / symptom_warning (§5.2), plus shared ingredients (§1.1) /
-            excipients (§1.2) / packaging (§6) / characteristics. The response `format` field is
-            "otc". Rx-only fields are not valid for OTC and vice versa. Any §7+ tail (儲存方式/
-            類別/急救及解毒方法/…) is returned in `additional_sections`.
+            usage_precautions (§3 使用上注意事項), directions (§4 用法用量, ≠ Rx dosage),
+            otc_warnings (§5 警語, ≠ Rx warnings), plus shared ingredients (§1.1) /
+            excipients (§1.2) / packaging (§6) / characteristics. §3 and §5 are exposed only via
+            those parent fields — their sub-section numbering varies per drug, so each sub-item's
+            text (with its heading) is folded into the parent rather than given a brittle per-number
+            field. The response `format` field is "otc". Rx-only fields are not valid for OTC and
+            vice versa. Any §7+ tail (儲存方式/類別/適用時機/急救及解毒方法/…) is returned in
+            `additional_sections`.
             Optional/empty fields return empty strings (TFDA preserves order even when empty).
             Unknown names returned in `unknown_fields` with `did_you_mean` for self-correction.
 

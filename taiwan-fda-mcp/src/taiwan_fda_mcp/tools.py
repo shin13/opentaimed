@@ -168,19 +168,14 @@ OTC_FIELDS: list[str] = [
     "valid_until",
     # Pre-section (OTC: characteristics only — no <WARNING>/BBW in OTC structure)
     "characteristics",
-    # CONTENT — OTC structure (parents + sub-sections)
+    # CONTENT — OTC structure (official top-level sections only; see
+    # _OTC_SECTION_NUMBERS for why §3.x / §5.x sub-fields are not named)
     "ingredients",
     "excipients",
     "usage",
     "usage_precautions",
-    "do_not_use",
-    "consult_doctor_before_use",
-    "consult_pharmacist_before_use",
-    "usage_other_precautions",
     "directions",
     "otc_warnings",
-    "adverse_warning",
-    "symptom_warning",
     "packaging",
 ]
 
@@ -614,26 +609,27 @@ _RX_SECTION_NUMBERS: dict[str, str] = {
 
 # Section number per OTC CONTENT field (ADR-0007 §2 / 衛福部 105.03.08 公告).
 # OTC reuses numeric <NO> with DIFFERENT meanings than Rx — hence a separate
-# dict dispatched by <DTYPE>. §7+ tail (儲存方式/類別/許可證號/急救…) is NOT named;
-# it flows through additional_sections with text.
+# dict dispatched by <DTYPE>.
+#
+# Only the OFFICIAL top-level sections are named. Live verification (2026-05-30)
+# showed OTC §3.x / §5.x sub-numbering is NOT stable across drugs — e.g. one
+# insert's §3.2 is 諮詢藥師 while another's §3.2 is 洽醫師. A by-position sub-field
+# map therefore mislabels content, so §3 / §5 are exposed only via their stable
+# parents (`usage_precautions` / `otc_warnings`); title-folding keeps every
+# sub-item's text (with its heading) inside the parent. §7+ tail (儲存方式/類別/
+# 適用時機/急救及解毒方法/…) is NOT named — it flows through additional_sections.
 _OTC_SECTION_NUMBERS: dict[str, str] = {
     # Section 1 — 成分
     "ingredients": "1.1",
     "excipients": "1.2",
     # Section 2 — 用途(適應症)  ← distinct from Rx `indication`
     "usage": "2",
-    # Section 3 — 使用上注意事項 (parent + sub-sections; OTC-only)
+    # Section 3 — 使用上注意事項 (parent only; sub-numbering varies per drug)
     "usage_precautions": "3",
-    "do_not_use": "3.1",
-    "consult_doctor_before_use": "3.2",
-    "consult_pharmacist_before_use": "3.3",
-    "usage_other_precautions": "3.4",
     # Section 4 — 用法用量  ← distinct from Rx `dosage`
     "directions": "4",
-    # Section 5 — 警語 (parent + sub-sections)  ← distinct from Rx `warnings`
+    # Section 5 — 警語 (parent only; sub-numbering varies per drug)
     "otc_warnings": "5",
-    "adverse_warning": "5.1",
-    "symptom_warning": "5.2",
     # Section 6 — 包裝
     "packaging": "6",
 }

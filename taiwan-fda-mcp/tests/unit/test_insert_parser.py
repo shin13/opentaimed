@@ -102,6 +102,30 @@ def test_factories_and_companies(xml_bytes):
     assert insert.companies[1]["name"] == "VIATRIS PHARMACEUTICALS LLC"
 
 
+def test_image_mime_falls_back_to_filename_extension():
+    """When the image VALUE omits `mimetype` (observed live), mime is inferred from the filename."""
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<ROOTDOCUMENT><DOCUMENT>
+  <INFO><SNO>X</SNO><CNAME>測試</CNAME><ENAME>T</ENAME><DTYPE>須由醫師處方使用</DTYPE>
+    <VERSION>1</VERSION><VDATE>2026-01-01</VDATE></INFO>
+  <CONTENT>
+    <SECTION LEVEL="1" ID="1"><NO>1</NO><TITLE>性狀</TITLE>
+      <SECTION LEVEL="2" ID="1.4"><NO>1.4</NO><TITLE>外觀</TITLE>
+        <VALUE type="image" encode="1" filename="pill.PNG">QUJD</VALUE>
+      </SECTION>
+    </SECTION>
+    <SECTION LEVEL="1" ID="2"><NO>2</NO><TITLE>適應症</TITLE>
+      <VALUE type="image" encode="1">QUJD</VALUE>
+    </SECTION>
+  </CONTENT>
+</DOCUMENT></ROOTDOCUMENT>""".encode()
+    insert = parse_get_drug_doc(xml)[0]
+    by_no = {s.number: s for s in insert.sections[0].children}
+    assert by_no["1.4"].images[0].mime == "image/png"  # from .PNG extension
+    # No mimetype and no filename → generic fallback (never a malformed data: URL).
+    assert insert.sections[1].images[0].mime == "application/octet-stream"
+
+
 def test_empty_root_returns_empty_list():
     inserts = parse_get_drug_doc(b'<?xml version="1.0"?><ROOTDOCUMENT />')
     assert inserts == []
