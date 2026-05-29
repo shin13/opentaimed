@@ -70,3 +70,44 @@ async def test_get_package_insert_tool(fixtures_dir: Path):
     payload = result.structured_content or json.loads(result.content[0].text)  # type: ignore[union-attr]
     assert payload["license_no"] == "衛署藥輸字第021571號"
     assert "indication" in payload["fields"]
+
+
+def _resource_text(content) -> str:
+    """Extract the text body from a FastMCP read_resource result."""
+    return content[0].text if isinstance(content, list) else content.contents[0].text
+
+
+@pytest.mark.asyncio
+async def test_rx_structure_resource_listed_and_readable():
+    """The Rx-insert-structure resource is listed and readable via the MCP server."""
+    async with Client(mcp) as client:
+        resources = await client.list_resources()
+        uris = [str(r.uri) for r in resources]
+        assert "structure://rx-insert" in uris
+
+        text = _resource_text(await client.read_resource("structure://rx-insert"))
+        assert "處方藥" in text
+        assert "1.2 賦形劑" in text
+        assert "6.5 老年人" in text
+        assert "10.3 臨床前安全性資料" in text
+        assert "衛福部 110.09.14" in text  # source citation
+        # field-name map present
+        assert "special_warning" in text
+        assert "geriatric" in text
+
+
+@pytest.mark.asyncio
+async def test_otc_structure_resource_listed_and_readable():
+    """The OTC-insert-structure resource is listed and readable."""
+    async with Client(mcp) as client:
+        resources = await client.list_resources()
+        uris = [str(r.uri) for r in resources]
+        assert "structure://otc-insert" in uris
+
+        text = _resource_text(await client.read_resource("structure://otc-insert"))
+        assert "非處方藥" in text
+        assert "【成分】" in text
+        assert "【用法用量】" in text
+        # real OTC field-name map (no longer a placeholder)
+        assert "usage" in text
+        assert "do_not_use" in text

@@ -7,6 +7,7 @@ from fastmcp import FastMCP
 
 from taiwan_fda_mcp.config import get_settings
 from taiwan_fda_mcp.logging_config import configure_logging
+from taiwan_fda_mcp.resources import OTC_INSERT_STRUCTURE_MD, RX_INSERT_STRUCTURE_MD
 from taiwan_fda_mcp.tool_responses import (
     CheckInsertUpdatesResponse,
     GetPackageInsertResponse,
@@ -83,6 +84,15 @@ mcp: FastMCP = FastMCP(
         "you requested in `fields`, (b) cite section numbers precisely, (c) decide "
         "whether a second call for specific fields is worthwhile. NEVER assume the "
         "`fields` dict is exhaustive — check the TOC first.\n\n"
+        "**Reference resources available:**\n"
+        "  - `structure://rx-insert` — TFDA 處方藥仿單 official structure "
+        "(15 sections + sub-sections + field-name map)\n"
+        "  - `structure://otc-insert` — TFDA 非處方藥仿單 official structure "
+        "(6 sections + field-name map)\n"
+        "Read these to learn which field name maps to which TFDA section — useful "
+        "for precise citations (§6.5 老年人 → field `geriatric`), planning "
+        "multi-section queries, or judging whether a piece of information is even "
+        "within this insert format's scope.\n\n"
         "If a tool returns an error, report it verbatim — do not silently fall "
         "back to training data. The user needs to know when official data was "
         "unavailable."
@@ -200,6 +210,18 @@ async def check_insert_updates(
         automatically; a single FDA outage in one batch does not lose the rest.
     """
     return await _check_insert_updates(since_date=since_date, license_list=license_list)
+
+
+@mcp.resource("structure://rx-insert", mime_type="text/markdown")
+def rx_insert_structure() -> str:
+    """Reference: TFDA Rx (處方藥) insert structure — sections 1-15 + sub-sections."""
+    return RX_INSERT_STRUCTURE_MD
+
+
+@mcp.resource("structure://otc-insert", mime_type="text/markdown")
+def otc_insert_structure() -> str:
+    """Reference: TFDA OTC (非處方藥) insert structure — 6 sections + field-name map."""
+    return OTC_INSERT_STRUCTURE_MD
 
 
 def main() -> None:
