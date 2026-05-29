@@ -24,6 +24,7 @@ from taiwan_fda_mcp.tools import (
 
 SearchByLiteral = Literal["any", "name_zh", "name_en", "ingredient", "license_no"]
 FieldGroupLiteral = Literal["all", "key_fields"]
+ResponseFormatLiteral = Literal["concise", "key", "detailed", "full"]
 
 mcp: FastMCP = FastMCP(
     name="taiwan-fda-mcp",
@@ -60,14 +61,21 @@ mcp: FastMCP = FastMCP(
         "  3. Cite via source_url / human_url + section + last_update_date\n"
         "  4. Tell the end user: data quoted from TFDA, accessed via the "
         "independent open-source MCP server `taiwan-fda-mcp` (NOT a TFDA product).\n\n"
+        "**Black box warning (special_warning):** When this field is non-empty, "
+        "you MUST quote its content verbatim in any response that mentions "
+        "warnings or contraindications. Do NOT paraphrase, summarise, or merge "
+        "it with the §5 warnings. TFDA 加框警語 is the strongest clinical safety "
+        "signal — losing wording is a medical safety risk. When `special_warning` "
+        "is empty AND its name appears in `confirmed_absent`, you MAY state "
+        "\"TFDA 仿單確認此藥無加框警語\" as a positive clinical fact (this is "
+        "DIFFERENT from \"資料庫查無加框警語\", which would imply tool failure).\n\n"
         "**Coverage check before claiming '未載明':** When `get_package_insert` "
         "returns content but the user asks about something not in `fields`, check "
-        "the `unmapped_sections` list. If a relevant-sounding section number / "
-        "title appears there, the data exists in the source but this wrapper has "
-        "not mapped it yet — report this honestly (\"this wrapper does not yet "
-        "surface section N.M《title》; check {human_url} for the official "
-        "version\") rather than claiming the insert lacks the information. Do NOT "
-        "fall back to training data.\n\n"
+        "the `additional_sections` list. Each entry carries the section number, "
+        "title, AND verbatim text — quote it and cite the section_no directly. If "
+        "the topic is in neither `fields` nor `additional_sections`, say the "
+        "insert does not document it; direct the user to `human_url` for the "
+        "official page. Do NOT fall back to training data.\n\n"
         "If a tool returns an error, report it verbatim — do not silently fall "
         "back to training data. The user needs to know when official data was "
         "unavailable."
@@ -101,31 +109,60 @@ async def search_drugs(
 @mcp.tool
 async def get_package_insert(
     license_no: str,
-    fields: FieldGroupLiteral | list[str] = "key_fields",
+    response_format: ResponseFormatLiteral = "key",
+    fields: FieldGroupLiteral | list[str] | None = None,
 ) -> GetPackageInsertResponse:
     """Fetch the official package insert (仿單) for a Taiwan FDA drug license.
 
     Args:
         license_no: full Chinese license string (e.g. "衛署藥輸字第021571號").
-        fields: which fields to extract. Either "key_fields" (default — indication, dosage,
-            contraindications, excipients, warnings, side_effects, last_update_date), "all"
-            (every available field), or an explicit list of field names from this exact set:
+        response_format: one of "concise" / "key" (default) / "detailed" / "full". Controls
+            which fields are returned by default; overridden if `fields` is set explicitly.
+            "concise" = name_zh + indication + special_warning + last_update_date; "key" =
+            the safety-critical default set; "detailed" = all mapped sub-section fields;
+            "full" = detailed + main_factories / sub_factories / companies lists + image
+            data_url payloads. See ADR-0006 for the rationale.
+        fields: explicit list of field names (overrides response_format). Either "key_fields",
+            "all", or a list drawn from this exact set:
             Basic — name_zh, name_en, license_no, form, applicant, manufacturer,
             drug_class, valid_until;
-            Clinical — indication, dosage, contraindications, warnings, interactions,
-            side_effects, special_populations, overdose;
-            Composition — ingredients, excipients, form_detail, appearance;
-            Pharmacology — pharmacology, pharmacokinetics, clinical_trials;
-            Storage — packaging, shelf_life, storage_conditions, storage_cautions;
-            Patient — patient_instructions, other_info;
+            Pre-section (always returned; "" + listed in confirmed_absent when XML element empty) —
+            special_warning (top-level <WARNING> element = 加框警語 / black box warning),
+            characteristics (top-level <CHARACT> element = 特殊性狀);
+            Indication — indication;
+            Dosage — dosage (parent §3), dosage_general (§3.1), dosage_preparation (§3.2),
+            dosage_special_populations (§3.3);
+            Restrictions — contraindications (§4);
+            Warnings — warnings (parent §5; no longer merges <WARNING>), abuse_dependence (§5.2),
+            machine_operation (§5.3), lab_tests (§5.4), other_precautions (§5.5);
+            Special populations — special_populations (parent §6), pregnancy (§6.1),
+            lactation (§6.2), reproductive (§6.3), pediatric (§6.4), geriatric (§6.5),
+            hepatic_impairment (§6.6), renal_impairment (§6.7), other_populations (§6.8);
+            Interactions — interactions (§7);
+            Adverse — side_effects (parent §8), adverse_clinical (§8.1), adverse_trial (§8.2),
+            adverse_postmarketing (§8.3);
+            Overdose — overdose (§9);
+            Pharmacology — pharmacology (parent §10), mechanism_of_action (§10.1),
+            pharmacodynamics (§10.2), nonclinical_safety (§10.3);
+            Pharmacokinetics — pharmacokinetics (§11);
+            Trials — clinical_trials (§12);
+            Composition — ingredients (§1.1), excipients (§1.2), form_detail (§1.3), appearance (§1.4);
+            Storage — packaging (§13.1), shelf_life (§13.2), storage_conditions (§13.3),
+            storage_cautions (§13.4);
+            Patient — patient_instructions (§14), other_info (§15);
             Metadata — last_update_date, insert_version.
-            Unknown names are returned in `unknown_fields` for self-correction.
+            Optional/empty fields return empty strings (TFDA preserves order even when empty).
+            Unknown names returned in `unknown_fields` with `did_you_mean` for self-correction.
 
     Returns:
-        Dict with license_no, fields (text per field), source_url, retrieved_at, last_update_date.
+        Dict with license_no, format ("rx"/"otc"), fields (text per field), field_sections,
+        confirmed_absent, additional_sections (text-bearing sections without a named field),
+        images, source_url, human_url, retrieved_at, last_update_date.
         On unsupported license prefix or fetch failure, returns {"license_no": ..., "error": {...}}.
     """
-    return await _get_package_insert(license_no=license_no, fields=fields)
+    return await _get_package_insert(
+        license_no=license_no, fields=fields, response_format=response_format
+    )
 
 
 @mcp.tool

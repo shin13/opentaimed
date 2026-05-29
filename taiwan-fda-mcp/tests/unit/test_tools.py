@@ -83,8 +83,13 @@ async def test_get_package_insert_key_fields(seeded_settings, fixtures_dir):
     assert "高血壓" in fields["indication"]
     assert "dosage" in fields
     assert "5 mg" in fields["dosage"]
+    # warnings now maps purely to §5 (no longer merges the top-level <WARNING>).
     assert "warnings" in fields
-    assert "心衰竭" in fields["warnings"]
+    assert "葡萄柚汁" in fields["warnings"]
+    assert "心衰竭" not in fields["warnings"]
+    # The BBW (top-level <WARNING>) is its own field and is in the default set.
+    assert "special_warning" in fields
+    assert "心衰竭" in fields["special_warning"]
     assert "side_effects" in fields
     assert "頭痛" in fields["side_effects"]
 
@@ -186,7 +191,8 @@ async def test_get_package_insert_new_section_fields(seeded_settings, fixtures_d
 
     assert "微晶纖維素" in fields["excipients"]
     assert sections["excipients"] == "1.2"
-    assert "孕婦" in fields["special_populations"]
+    # section 6 parent now folds 6.1 through 6.8; assert a fragment from the sub-sections.
+    assert "避免使用" in fields["special_populations"]
     assert sections["special_populations"] == "6"
     assert "支持性治療" in fields["overdose"]
     assert sections["overdose"] == "9"
@@ -302,13 +308,13 @@ async def test_check_insert_updates_filters_license_list(seeded_settings, fixtur
 
 
 @pytest.mark.asyncio
-async def test_get_package_insert_surfaces_unmapped_sections(
+async def test_get_package_insert_surfaces_additional_sections(
     seeded_settings, fixtures_dir
 ):
-    """Sections present in XML but not in _SECTION_NUMBERS surface as unmapped_sections.
+    """Text-bearing sections with no named field surface in additional_sections.
 
-    Safety net so a future TFDA-added section is not silently dropped (the way
-    1.2 賦形劑 was, before this plan).
+    Carries section_no + title + verbatim text, so a future TFDA-added section
+    is not silently dropped (the way 1.2 賦形劑 was, before this plan).
     """
     xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
     async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
@@ -322,25 +328,27 @@ async def test_get_package_insert_surfaces_unmapped_sections(
             )
         ).model_dump()
 
-    unmapped = result["unmapped_sections"]
-    # Fixture has section 99 ("未來新欄位") deliberately not in _SECTION_NUMBERS.
-    assert any(u["section_no"] == "99" for u in unmapped), unmapped
-    entry_99 = next(u for u in unmapped if u["section_no"] == "99")
+    additional = result["additional_sections"]
+    # Fixture has section 99 ("未來新欄位") deliberately without a named field.
+    assert any(a["section_no"] == "99" for a in additional), additional
+    entry_99 = next(a for a in additional if a["section_no"] == "99")
     assert entry_99["title"] == "未來新欄位"
-    # Sanity: known sections (e.g. 1.1 ingredients) MUST NOT appear here.
-    assert not any(u["section_no"] == "1.1" for u in unmapped)
-    assert not any(u["section_no"] == "2" for u in unmapped)
+    # The text is carried verbatim (HTML-stripped), not just the section number.
+    assert "模擬" in entry_99["text"]
+    # Sanity: known sections (e.g. 1.1 ingredients, 2 indication) MUST NOT appear here.
+    assert not any(a["section_no"] == "1.1" for a in additional)
+    assert not any(a["section_no"] == "2" for a in additional)
 
 
 @pytest.mark.asyncio
-async def test_unmapped_sections_suppresses_mapped_parent_subsections(
+async def test_additional_sections_suppresses_mapped_parent_subsections(
     seeded_settings,
 ):
-    """Sub-sections whose parent section is mapped must NOT appear in unmapped_sections.
+    """Sub-sections whose parent section is mapped must NOT appear in additional_sections.
 
     Example: section 10 'pharmacology' is mapped. The XML walker for that field
     already collects 10.1/10.2/10.3 descendants, so listing 10.1 in
-    unmapped_sections would be a false positive — implying data is missing
+    additional_sections would be a false positive — implying data is missing
     when it is in fact returned via the parent field.
     """
     xml = """<?xml version="1.0" encoding="utf-8"?>
@@ -390,9 +398,194 @@ async def test_unmapped_sections_suppresses_mapped_parent_subsections(
             )
         ).model_dump()
 
-    unmapped_numbers = {u["section_no"] for u in result["unmapped_sections"]}
+    additional_numbers = {a["section_no"] for a in result["additional_sections"]}
     # 99 should appear (truly unmapped, no mapped parent).
-    assert "99" in unmapped_numbers, unmapped_numbers
+    assert "99" in additional_numbers, additional_numbers
     # 10.1 and 10.2 must NOT appear (parent 10 is mapped → walker covers them).
-    assert "10.1" not in unmapped_numbers, unmapped_numbers
-    assert "10.2" not in unmapped_numbers, unmapped_numbers
+    assert "10.1" not in additional_numbers, additional_numbers
+    assert "10.2" not in additional_numbers, additional_numbers
+
+
+_RX_SUBSECTION_EXPECTED = {
+    "dosage_general": "3.1",
+    "dosage_preparation": "3.2",
+    "dosage_special_populations": "3.3",
+    "abuse_dependence": "5.2",
+    "machine_operation": "5.3",
+    "lab_tests": "5.4",
+    "other_precautions": "5.5",
+    "pregnancy": "6.1",
+    "lactation": "6.2",
+    "reproductive": "6.3",
+    "pediatric": "6.4",
+    "geriatric": "6.5",
+    "hepatic_impairment": "6.6",
+    "renal_impairment": "6.7",
+    "other_populations": "6.8",
+    "adverse_clinical": "8.1",
+    "adverse_trial": "8.2",
+    "adverse_postmarketing": "8.3",
+    "mechanism_of_action": "10.1",
+    "pharmacodynamics": "10.2",
+    "nonclinical_safety": "10.3",
+}
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_rx_sub_sections_complete_coverage(
+    seeded_settings, fixtures_dir
+):
+    """All 21 Rx sub-sections (§3.x/5.x/6.x/8.x/10.x) are individually addressable.
+
+    Per 衛福部 110.09.14 公告, each sub-section must be exposable as its own field
+    so callers can cite specific numbers (e.g. field_sections['geriatric'] == '6.5').
+    """
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                fields=list(_RX_SUBSECTION_EXPECTED),
+                settings=seeded_settings,
+            )
+        ).model_dump()
+
+    fields = result["fields"]
+    field_sections = result["field_sections"]
+    for f, expected_no in _RX_SUBSECTION_EXPECTED.items():
+        assert f in fields, f"missing field {f}"
+        assert fields[f], f"field {f} is empty (fixture broken?)"
+        assert field_sections.get(f) == expected_no, (
+            f"field {f} maps to section {field_sections.get(f)} expected {expected_no}"
+        )
+    assert result["unknown_fields"] is None
+
+
+@pytest.mark.asyncio
+async def test_special_warning_from_top_level_warning_element(seeded_settings, fixtures_dir):
+    """`special_warning` returns the top-level <WARNING> element (加框警語 / BBW)."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                fields=["special_warning"],
+                settings=seeded_settings,
+            )
+        ).model_dump()
+    assert "心衰竭" in result["fields"]["special_warning"]
+    # Non-empty BBW → not flagged as confirmed_absent.
+    assert "special_warning" not in result["confirmed_absent"]
+
+
+@pytest.mark.asyncio
+async def test_confirmed_absent_for_empty_characteristics(seeded_settings, fixtures_dir):
+    """An always-present field whose XML element is empty → "" in fields + confirmed_absent.
+
+    Distinguishes 'TFDA structurally confirms no 特殊性狀' from 'tool failed'.
+    The fixture has no <CHARACT>, so characteristics is structurally absent.
+    """
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                fields=["characteristics"],
+                settings=seeded_settings,
+            )
+        ).model_dump()
+    assert result["fields"]["characteristics"] == ""
+    assert "characteristics" in result["confirmed_absent"]
+
+
+@pytest.mark.asyncio
+async def test_format_discriminator_rx(seeded_settings, fixtures_dir):
+    """Fixture DTYPE=須由醫師處方使用 → format 'rx'."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                settings=seeded_settings,
+            )
+        ).model_dump()
+    assert result["format"] == "rx"
+
+
+@pytest.mark.asyncio
+async def test_images_metadata_present_data_url_gated_on_full(seeded_settings, fixtures_dir):
+    """Image metadata always surfaces; data_url only when response_format='full'."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        key_result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                settings=seeded_settings,
+            )
+        ).model_dump()
+        full_result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                response_format="full",
+                settings=seeded_settings,
+            )
+        ).model_dump()
+
+    # Metadata present in both; the fixture §1.4 carries one image.
+    assert len(key_result["images"]) == 1
+    img = key_result["images"][0]
+    assert img["section_no"] == "1.4"
+    assert img["mime"] == "image/jpeg"
+    assert img["size_bytes"] == 6  # noqa: PLR2004
+    assert img["data_url"] is None  # not 'full' → no payload
+
+    full_img = full_result["images"][0]
+    assert full_img["data_url"] == "data:image/jpeg;base64,QUJDREVG"
+
+
+@pytest.mark.asyncio
+async def test_entity_lists_only_on_full(seeded_settings, fixtures_dir):
+    """main_factories / sub_factories / companies surface only on response_format='full'."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        key_result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                settings=seeded_settings,
+            )
+        ).model_dump()
+        full_result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                response_format="full",
+                settings=seeded_settings,
+            )
+        ).model_dump()
+
+    assert key_result["main_factories"] == []
+    assert key_result["companies"] == []
+
+    assert len(full_result["main_factories"]) == 1
+    assert full_result["main_factories"][0]["name"] == "久裕企業股份有限公司"
+    assert full_result["main_factories"][0]["number"] == "1"
+    assert len(full_result["sub_factories"]) == 1
+    assert len(full_result["companies"]) == 2  # noqa: PLR2004
+    assert full_result["companies"][0]["name"] == "暉致醫藥股份有限公司"

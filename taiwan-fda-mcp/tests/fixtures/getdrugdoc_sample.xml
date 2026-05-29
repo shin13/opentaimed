@@ -44,21 +44,132 @@
           <TITLE>用法用量</TITLE>
           <VALUE type="text">&lt;p&gt;成人：每日口服 5 mg 至 10 mg。&lt;/p&gt;</VALUE>
         </SECTION>
+        <SECTION LEVEL="2" ID="3.2">
+          <NO>3.2</NO>
+          <TITLE>調製方式</TITLE>
+          <VALUE type="text">&lt;p&gt;口服錠劑，無須調製。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="3.3">
+          <NO>3.3</NO>
+          <TITLE>特殊族群用法用量</TITLE>
+          <VALUE type="text">&lt;p&gt;腎功能不全：肌酸酐清除率 &lt;30 時建議減半。&lt;/p&gt;</VALUE>
+        </SECTION>
+      </SECTION>
+      <SECTION LEVEL="1" ID="5">
+        <NO>5</NO>
+        <TITLE>警語及注意事項</TITLE>
+        <SECTION LEVEL="2" ID="5.1">
+          <NO>5.1</NO>
+          <TITLE>警語/注意事項</TITLE>
+          <VALUE type="text">&lt;p&gt;與葡萄柚汁併用會增加血中濃度。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="5.2">
+          <NO>5.2</NO>
+          <TITLE>藥物濫用及依賴性</TITLE>
+          <VALUE type="text">&lt;p&gt;無濫用潛勢。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="5.3">
+          <NO>5.3</NO>
+          <TITLE>操作機械能力</TITLE>
+          <VALUE type="text">&lt;p&gt;可能引起頭暈，駕駛時注意。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="5.4">
+          <NO>5.4</NO>
+          <TITLE>實驗室檢測</TITLE>
+          <VALUE type="text">&lt;p&gt;偶見肝功能指數上升。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="5.5">
+          <NO>5.5</NO>
+          <TITLE>其他注意事項</TITLE>
+          <VALUE type="text">&lt;p&gt;空腹或飯後服用皆可。&lt;/p&gt;</VALUE>
+        </SECTION>
       </SECTION>
       <SECTION LEVEL="1" ID="8">
         <NO>8</NO>
         <TITLE>副作用/不良反應</TITLE>
-        <VALUE type="text">&lt;p&gt;常見：頭痛、水腫。&lt;/p&gt;</VALUE>
+        <SECTION LEVEL="2" ID="8.1">
+          <NO>8.1</NO>
+          <TITLE>臨床重要副作用/不良反應</TITLE>
+          <VALUE type="text">&lt;p&gt;常見：頭痛、水腫。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="8.2">
+          <NO>8.2</NO>
+          <TITLE>臨床試驗經驗</TITLE>
+          <VALUE type="text">&lt;p&gt;Phase III 試驗中 12% 出現水腫。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="8.3">
+          <NO>8.3</NO>
+          <TITLE>上市後經驗</TITLE>
+          <VALUE type="text">&lt;p&gt;罕見報告心律不整。&lt;/p&gt;</VALUE>
+        </SECTION>
       </SECTION>
       <SECTION LEVEL="1" ID="6">
         <NO>6</NO>
         <TITLE>特殊族群之用藥</TITLE>
-        <VALUE type="text">&lt;p&gt;孕婦：D 級。哺乳：避免。&lt;/p&gt;</VALUE>
+        <SECTION LEVEL="2" ID="6.1">
+          <NO>6.1</NO>
+          <TITLE>懷孕</TITLE>
+          <VALUE type="text">&lt;p&gt;D 級，避免使用。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="6.2">
+          <NO>6.2</NO>
+          <TITLE>哺乳</TITLE>
+          <VALUE type="text">&lt;p&gt;會分泌至乳汁，避免哺乳。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="6.3">
+          <NO>6.3</NO>
+          <TITLE>有生育能力的女性與男性</TITLE>
+          <VALUE type="text">&lt;p&gt;治療期間應採取避孕措施。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="6.4">
+          <NO>6.4</NO>
+          <TITLE>小兒</TITLE>
+          <VALUE type="text">&lt;p&gt;6 歲以下安全性未確立。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="6.5">
+          <NO>6.5</NO>
+          <TITLE>老年人</TITLE>
+          <VALUE type="text">&lt;p&gt;從低劑量 2.5 mg 起始。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="6.6">
+          <NO>6.6</NO>
+          <TITLE>肝功能不全</TITLE>
+          <VALUE type="text">&lt;p&gt;中度以上肝損傷需減量。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="6.7">
+          <NO>6.7</NO>
+          <TITLE>腎功能不全</TITLE>
+          <VALUE type="text">&lt;p&gt;肌酸酐清除率 &lt;30 需評估。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="6.8">
+          <NO>6.8</NO>
+          <TITLE>其他族群</TITLE>
+          <VALUE type="text">&lt;p&gt;透析病患需個別評估。&lt;/p&gt;</VALUE>
+        </SECTION>
       </SECTION>
       <SECTION LEVEL="1" ID="9">
         <NO>9</NO>
         <TITLE>過量</TITLE>
         <VALUE type="text">&lt;p&gt;支持性治療為主。&lt;/p&gt;</VALUE>
+      </SECTION>
+      <SECTION LEVEL="1" ID="10">
+        <NO>10</NO>
+        <TITLE>藥理特性</TITLE>
+        <SECTION LEVEL="2" ID="10.1">
+          <NO>10.1</NO>
+          <TITLE>作用機轉</TITLE>
+          <VALUE type="text">&lt;p&gt;阻斷 L-type 鈣離子通道。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="10.2">
+          <NO>10.2</NO>
+          <TITLE>藥效藥理特性</TITLE>
+          <VALUE type="text">&lt;p&gt;降低血管阻力。&lt;/p&gt;</VALUE>
+        </SECTION>
+        <SECTION LEVEL="2" ID="10.3">
+          <NO>10.3</NO>
+          <TITLE>臨床前安全性資料</TITLE>
+          <VALUE type="text">&lt;p&gt;大鼠致癌性試驗陰性。&lt;/p&gt;</VALUE>
+        </SECTION>
       </SECTION>
       <SECTION LEVEL="1" ID="12">
         <NO>12</NO>

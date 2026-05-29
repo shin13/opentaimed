@@ -29,16 +29,19 @@ from taiwan_fda_mcp.sources.opendata.dataset37 import (
 from taiwan_fda_mcp.sources.opendata.search import SearchField
 from taiwan_fda_mcp.sources.opendata.search import search_drugs as _search
 from taiwan_fda_mcp.tool_responses import (
+    AdditionalSection,
     Attribution,
     BatchError,
     CheckInsertUpdatesResponse,
+    CompanyEntity,
     DrugLicenseRow,
     ErrorInfo,
+    FactoryEntity,
     GetPackageInsertResponse,
+    ImageRef,
     InsertVersionInfo,
     SearchDrugsResponse,
     UnknownFieldInfo,
-    UnmappedSectionInfo,
     UpdateEntry,
 )
 
@@ -58,17 +61,23 @@ _ATTRIBUTION = Attribution(
 )
 
 
-KEY_FIELDS: list[str] = [
+# Pre-section fields sourced from top-level <WARNING> / <CHARACT> XML elements —
+# always returned (even when empty) so the LLM gets a positive "TFDA confirms
+# absent" signal via `confirmed_absent`, distinct from "tool failed to fetch".
+_ALWAYS_PRESENT_FIELDS: tuple[str, ...] = ("special_warning", "characteristics")
+
+RX_KEY_FIELDS: list[str] = [
     "indication",
     "dosage",
     "contraindications",
     "excipients",
     "warnings",
     "side_effects",
+    "special_warning",
     "last_update_date",
 ]
 
-ALL_FIELDS: list[str] = [
+RX_FIELDS: list[str] = [
     # INFO block fields
     "name_zh",
     "name_en",
@@ -81,20 +90,44 @@ ALL_FIELDS: list[str] = [
     "form",
     "drug_class",
     "valid_until",
-    # CONTENT section-based fields
+    # Pre-section (always returned; populates confirmed_absent when empty)
+    "special_warning",
+    "characteristics",
+    # CONTENT — Rx structure (parents + sub-sections)
     "indication",
     "dosage",
+    "dosage_general",
+    "dosage_preparation",
+    "dosage_special_populations",
     "contraindications",
     "warnings",
+    "abuse_dependence",
+    "machine_operation",
+    "lab_tests",
+    "other_precautions",
     "interactions",
     "side_effects",
+    "adverse_clinical",
+    "adverse_trial",
+    "adverse_postmarketing",
     "ingredients",
     "excipients",
     "form_detail",
     "appearance",
     "pharmacology",
+    "mechanism_of_action",
+    "pharmacodynamics",
+    "nonclinical_safety",
     "pharmacokinetics",
     "special_populations",
+    "pregnancy",
+    "lactation",
+    "reproductive",
+    "pediatric",
+    "geriatric",
+    "hepatic_impairment",
+    "renal_impairment",
+    "other_populations",
     "overdose",
     "clinical_trials",
     "packaging",
@@ -104,6 +137,28 @@ ALL_FIELDS: list[str] = [
     "patient_instructions",
     "other_info",
 ]
+
+ResponseFormat = Literal["concise", "key", "detailed", "full"]
+
+# Field set per response_format. `fields=` (explicit) overrides this when set.
+_RESPONSE_FORMAT_FIELDS: dict[ResponseFormat, list[str]] = {
+    "concise": ["name_zh", "indication", "special_warning", "last_update_date"],
+    "key": RX_KEY_FIELDS,
+    "detailed": RX_FIELDS,
+    "full": RX_FIELDS,  # entity lists + image data_url additionally surfaced (not via fields)
+}
+
+# OTC discriminator categories (ADR-0007 附錄二). Anything else is Rx.
+_OTC_CATEGORIES: frozenset[str] = frozenset(
+    {
+        "成藥",
+        "乙類成藥",
+        "甲類成藥",
+        "須經醫師指示使用",
+        "牙醫師指示使用",
+        "醫師藥師藥劑生指示藥品",
+    }
+)
 
 
 async def _load_or_refresh_licenses(settings: Settings) -> list[DrugLicense]:
@@ -173,15 +228,22 @@ async def search_drugs(
 async def get_package_insert(
     license_no: str,
     *,
-    fields: list[str] | Literal["all", "key_fields"] = "key_fields",
+    fields: list[str] | Literal["all", "key_fields"] | None = None,
+    response_format: ResponseFormat = "key",
     settings: Settings | None = None,
 ) -> GetPackageInsertResponse:
     """Fetch one license's package insert and return the requested fields.
 
+    `response_format` selects a default field set (concise / key / detailed /
+    full); an explicit `fields` list overrides it for fine-grained selection.
+    Entity lists (main_factories / sub_factories / companies) and image
+    `data_url` payloads are surfaced only when `response_format="full"`.
+
     See `GetPackageInsertResponse` for the full response shape, including
     citation traceability (`field_sections` mapping each clinical field to
-    its insert section number) and self-correcting `unknown_fields` with
-    `did_you_mean`.
+    its insert section number), self-correcting `unknown_fields`, the
+    `confirmed_absent` trust signal, and `additional_sections` carrying any
+    text-bearing section without a named field.
 
     When FDA returns multiple inserts for one license (rare — usually
     historical versions), the newest by update_date is selected and the
@@ -215,33 +277,44 @@ async def get_package_insert(
     ]
     license_row = await _find_license_row(license_no, s)
 
-    field_list = _resolve_fields(fields)
-    known_fields = set(ALL_FIELDS)
+    fmt = _classify_format(insert)
+    is_full = response_format == "full"
+
+    field_list = _resolve_fields(fields, response_format)
+    known_fields = set(RX_FIELDS)
     field_values: dict[str, str] = {}
     field_sections: dict[str, str] = {}
     unknown_fields: list[UnknownFieldInfo] = []
     for f in field_list:
         if f not in known_fields:
-            close = difflib.get_close_matches(f, ALL_FIELDS, n=1, cutoff=0.6)
+            close = difflib.get_close_matches(f, RX_FIELDS, n=1, cutoff=0.6)
             unknown_fields.append(
                 UnknownFieldInfo(input=f, did_you_mean=close[0] if close else None)
             )
             continue
         value = _extract_field(f, insert=insert, license_row=license_row)
-        if value:
+        # Always-present pre-section fields stay in `fields` even when empty
+        # (positive "TFDA confirms absent" signal); others only when non-empty.
+        if value or f in _ALWAYS_PRESENT_FIELDS:
             field_values[f] = value
-            section_no = _SECTION_NUMBERS.get(f)
+            section_no = _RX_SECTION_NUMBERS.get(f)
             if section_no:
                 field_sections[f] = section_no
-            elif f == "warnings":
-                # warnings merges top-level <WARNING> + section 5; section 5 is the canonical citation.
-                field_sections[f] = "5"
 
-    unmapped = _collect_unmapped_sections(insert.sections, set(_SECTION_NUMBERS.values()))
+    confirmed_absent = [
+        f for f in _ALWAYS_PRESENT_FIELDS if f in field_values and not field_values[f]
+    ]
+
+    additional = _build_additional_sections(insert.sections, set(_RX_SECTION_NUMBERS.values()))
+    images = _build_images(insert.sections, include_data=is_full)
+    main_factories = _build_factories(insert.main_factory) if is_full else []
+    sub_factories = _build_factories(insert.sub_factories) if is_full else []
+    companies = _build_companies(insert.companies) if is_full else []
 
     return GetPackageInsertResponse(
         license_no=license_no,
         error=None,
+        format=fmt,
         fields=field_values,
         field_sections=field_sections,
         source_url=(
@@ -255,7 +328,12 @@ async def get_package_insert(
         alternate_versions=alternates,
         attribution=_ATTRIBUTION,
         unknown_fields=unknown_fields if unknown_fields else None,
-        unmapped_sections=unmapped,
+        confirmed_absent=confirmed_absent,
+        additional_sections=additional,
+        images=images,
+        main_factories=main_factories,
+        sub_factories=sub_factories,
+        companies=companies,
     )
 
 
@@ -372,35 +450,96 @@ async def _find_license_row(license_no: str, settings: Settings) -> DrugLicense 
     return next((r for r in licenses if r.license_no == license_no), None)
 
 
-def _resolve_fields(fields: list[str] | Literal["all", "key_fields"]) -> list[str]:
+def _resolve_fields(
+    fields: list[str] | Literal["all", "key_fields"] | None,
+    response_format: ResponseFormat,
+) -> list[str]:
+    if fields is None:
+        return list(_RESPONSE_FORMAT_FIELDS[response_format])
     if fields == "key_fields":
-        return list(KEY_FIELDS)
+        return list(RX_KEY_FIELDS)
     if fields == "all":
-        return list(ALL_FIELDS)
+        return list(RX_FIELDS)
     return list(fields)
 
 
-# Section number per CONTENT field — kept as a single local map for clarity.
-_SECTION_NUMBERS: dict[str, str] = {
+def _classify_format(insert: DrugInsert) -> Literal["rx", "otc"]:
+    """Dispatch Rx vs OTC from <DTYPE> (ADR-0007 附錄二), with a structural check.
+
+    Note: in this phase the OTC field space is not yet built — `format` is
+    surfaced for transparency, but extraction always uses the Rx map. OTC
+    dispatch lands in Phase 3.2.
+    """
+    fmt: Literal["rx", "otc"] = "otc" if insert.drug_type in _OTC_CATEGORIES else "rx"
+    first = insert.sections[0] if insert.sections else None
+    structural_otc = bool(first and first.number == "1" and first.title == "成分")
+    if structural_otc and fmt == "rx":
+        _logger.warning(
+            "insert.format.mismatch",
+            extra={"drug_type": insert.drug_type, "section1_title": first.title if first else None},
+        )
+    return fmt
+
+
+# Section number per Rx CONTENT field. Parents (e.g. "3") fold their sub-sections;
+# sub-sections (e.g. "3.1") are individually addressable for precise citation.
+_RX_SECTION_NUMBERS: dict[str, str] = {
+    # Section 1 — 性狀
     "ingredients": "1.1",
     "excipients": "1.2",
     "form_detail": "1.3",
     "appearance": "1.4",
+    # Section 2 — 適應症
     "indication": "2",
+    # Section 3 — 用法及用量 (parent + sub-sections)
     "dosage": "3",
+    "dosage_general": "3.1",
+    "dosage_preparation": "3.2",
+    "dosage_special_populations": "3.3",
+    # Section 4 — 禁忌
     "contraindications": "4",
+    # Section 5 — 警語及注意事項 (parent + sub-sections; no longer merges <WARNING>)
+    "warnings": "5",
+    "abuse_dependence": "5.2",
+    "machine_operation": "5.3",
+    "lab_tests": "5.4",
+    "other_precautions": "5.5",
+    # Section 6 — 特殊族群之用藥 (parent + sub-sections)
     "special_populations": "6",
+    "pregnancy": "6.1",
+    "lactation": "6.2",
+    "reproductive": "6.3",
+    "pediatric": "6.4",
+    "geriatric": "6.5",
+    "hepatic_impairment": "6.6",
+    "renal_impairment": "6.7",
+    "other_populations": "6.8",
+    # Section 7 — 交互作用
     "interactions": "7",
+    # Section 8 — 副作用/不良反應 (parent + sub-sections)
     "side_effects": "8",
+    "adverse_clinical": "8.1",
+    "adverse_trial": "8.2",
+    "adverse_postmarketing": "8.3",
+    # Section 9 — 過量
     "overdose": "9",
+    # Section 10 — 藥理特性 (parent + sub-sections)
     "pharmacology": "10",
+    "mechanism_of_action": "10.1",
+    "pharmacodynamics": "10.2",
+    "nonclinical_safety": "10.3",
+    # Section 11 — 藥物動力學
     "pharmacokinetics": "11",
+    # Section 12 — 臨床試驗資料
     "clinical_trials": "12",
+    # Section 13 — 藥品保存
     "packaging": "13.1",
     "shelf_life": "13.2",
     "storage_conditions": "13.3",
     "storage_cautions": "13.4",
+    # Section 14 — 病人使用須知
     "patient_instructions": "14",
+    # Section 15 — 其他
     "other_info": "15",
 }
 
@@ -443,38 +582,41 @@ def _extract_field(  # noqa: PLR0911, PLR0912
     if field == "valid_until":
         return license_row.valid_until if license_row else ""
 
-    # Special: warnings combines top-level <WARNING> with CONTENT section "5"
-    # (real Rx inserts put警語 in either or both places).
-    if field == "warnings":
-        top = html_to_text(insert.warning_html)
-        section5 = html_to_text(_section_text(insert.sections, "5"))
-        if top and section5:
-            return f"{top}\n\n{section5}"
-        return top or section5
+    # Special: special_warning sources from the top-level <WARNING> XML element
+    # — TFDA's 加框警語 / black box warning (BBW) pre-section, distinct from §5
+    # 警語及注意事項. MUST-quote rule applies (see server instructions). When empty,
+    # the response builder additionally records this field in `confirmed_absent`.
+    if field == "special_warning":
+        return html_to_text(insert.warning_html)
+    # Special: characteristics sources from the top-level <CHARACT> XML element
+    # — 特殊性狀 pre-section. Same confirmed_absent treatment.
+    if field == "characteristics":
+        return html_to_text(insert.characteristics_html)
+    # warnings (§5) now maps purely to section 5 — no longer merges <WARNING>.
 
     # CONTENT section-based fields — strip HTML to plain text. Saves ~75% tokens
     # and prevents the LLM from leaking raw <p style="..."> markup into responses.
-    section_no = _SECTION_NUMBERS.get(field)
+    section_no = _RX_SECTION_NUMBERS.get(field)
     if section_no:
         return html_to_text(_section_text(insert.sections, section_no))
 
     return ""
 
 
-def _collect_unmapped_sections(
+def _build_additional_sections(
     sections: list[InsertSection],
     mapped_numbers: set[str],
-) -> list[UnmappedSectionInfo]:
-    """List sections whose number AND whose closest ancestor number are unmapped.
+) -> list[AdditionalSection]:
+    """Return text-bearing sections that have no named field (with verbatim text).
 
-    Used to surface XML coverage gaps to callers (see UnmappedSectionInfo docstring).
-    Ancestor check: when a parent section number (e.g. "10") is mapped to a field
-    (e.g. `pharmacology`), `_section_text` walks descendants and folds their text
-    into the parent's field. Listing the descendants here would be a false positive
-    — the data IS returned, just under the parent field. Only surface sub-sections
-    when their parent path is also unmapped (i.e. genuine gaps).
+    Supersedes the old `unmapped_sections` net: it carries the section's true
+    number, title, AND text, so an unmapped section (e.g. OTC §7+, or a future
+    TFDA addition) is surfaced with content intact rather than silently dropped.
+    Ancestor check: when a parent number (e.g. "10") is mapped, `_section_text`
+    folds its descendants into the parent's field — listing those descendants
+    here would be a false "missing" signal, so they are suppressed.
     """
-    out: list[UnmappedSectionInfo] = []
+    out: list[AdditionalSection] = []
 
     def has_mapped_ancestor(number: str) -> bool:
         """Is any dot-prefix of `number` in mapped_numbers? e.g. "10.1" → check "10"."""
@@ -491,12 +633,64 @@ def _collect_unmapped_sections(
             and section.number not in mapped_numbers
             and not has_mapped_ancestor(section.number)
         ):
-            out.append(UnmappedSectionInfo(section_no=section.number, title=section.title))
+            out.append(
+                AdditionalSection(
+                    section_no=section.number,
+                    title=section.title,
+                    text=html_to_text(section.text),
+                )
+            )
 
     for s in sections:
         walk(s)
-    out.sort(key=lambda u: u.section_no)
+    out.sort(key=lambda a: a.section_no)
     return out
+
+
+def _build_images(sections: list[InsertSection], *, include_data: bool) -> list[ImageRef]:
+    """Flatten inline section images into ImageRef metadata.
+
+    `data_url` is populated only when `include_data` (response_format='full');
+    otherwise it stays null so the LLM still knows an image exists.
+    """
+    out: list[ImageRef] = []
+
+    def walk(section: InsertSection) -> None:
+        for img in section.images:
+            data_url = f"data:{img.mime};base64,{img.data}" if include_data and img.data else None
+            out.append(
+                ImageRef(
+                    section_no=section.number,
+                    caption=section.title,
+                    mime=img.mime,
+                    size_bytes=img.size_bytes,
+                    data_url=data_url,
+                )
+            )
+        for child in section.children:
+            walk(child)
+
+    for s in sections:
+        walk(s)
+    return out
+
+
+def _build_factories(entities: list[dict[str, str]]) -> list[FactoryEntity]:
+    return [
+        FactoryEntity(
+            number=e.get("number", ""),
+            name=e.get("name", ""),
+            address=e.get("address", ""),
+        )
+        for e in entities
+    ]
+
+
+def _build_companies(entities: list[dict[str, str]]) -> list[CompanyEntity]:
+    return [
+        CompanyEntity(name=e.get("name", ""), address=e.get("address", ""))
+        for e in entities
+    ]
 
 
 def _section_text(sections: list[InsertSection], wanted_number: str) -> str:
@@ -520,8 +714,8 @@ def _walk(section: InsertSection, wanted: str, out: list[str]) -> None:
 
 
 __all__ = [
-    "ALL_FIELDS",
-    "KEY_FIELDS",
+    "RX_FIELDS",
+    "RX_KEY_FIELDS",
     "check_insert_updates",
     "get_package_insert",
     "search_drugs",

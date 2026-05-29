@@ -1,6 +1,8 @@
 # path: src/taiwan_fda_mcp/tool_responses.py
 # brief: Pydantic response models — the public wire contract for the 3 MCP tools.
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -77,36 +79,61 @@ class UnknownFieldInfo(BaseModel):
     )
 
 
-_UNMAPPED_SECTION_NOTE = (
-    "This section exists in the FDA XML but the wrapper has no field name for "
-    "it yet. Do NOT invent a mapping to any field listed in `fields` — those "
-    "mappings are authoritative and would already include this section if it "
-    "matched. Direct the user to `human_url` for the official text of this "
-    "section."
-)
+class AdditionalSection(BaseModel):
+    """One insert section that carries text but has no named field in the active format.
 
-
-class UnmappedSectionInfo(BaseModel):
-    """One TFDA insert section present in the XML but not yet mapped to a field name.
-
-    Surfaced as a safety net: when TFDA adds new sections to the insert format,
-    they appear here instead of being silently dropped. Acts as the canary for
-    incidents like the 1.2 賦形劑 gap (May 2026).
+    Supersedes the older `unmapped_sections` safety net: it returns the section's
+    true `section_no` AND its verbatim `text`, so a section that this wrapper has
+    not given a field name (e.g. an OTC §7+ block, or a future TFDA addition) is
+    surfaced with its content intact rather than being silently dropped. Because
+    the raw text and true section number are returned, there is no risk of the LLM
+    fabricating a field mapping — quote `text` and cite `section_no` directly.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    section_no: str = Field(description="Section number as it appears in the FDA XML (e.g. '1.2', '16').")
+    section_no: str = Field(description="Section number as it appears in the FDA XML (e.g. '7', '16').")
     title: str = Field(description="Section title from the FDA XML (Traditional Chinese).")
-    note: str = Field(
-        default=_UNMAPPED_SECTION_NOTE,
-        description=(
-            "Constant safety-net guidance for LLM clients — identical in every "
-            "entry. Surfaced as a payload field (not just schema docs) because "
-            "live testing showed LLMs ignored description-only guidance and "
-            "fabricated mappings between unmapped sections and `fields` keys."
-        ),
+    text: str = Field(description="Verbatim plain-text content of this section.")
+
+
+class ImageRef(BaseModel):
+    """Metadata for one inline insert image (e.g. 藥品外觀).
+
+    `data_url` carries the base64 payload as a `data:` URI ONLY when the caller
+    requested `response_format="full"`; otherwise it is null so the LLM still
+    knows an image exists (and which section) without paying the token cost.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    section_no: str = Field(description="Section number the image belongs to (e.g. '1.4').")
+    caption: str = Field(description="Section title acting as the image caption.")
+    mime: str = Field(description="MIME type (e.g. 'image/jpeg').")
+    size_bytes: int = Field(description="Decoded payload size in bytes.")
+    data_url: str | None = Field(
+        default=None,
+        description="`data:{mime};base64,...` URI — populated only when response_format='full'.",
     )
+
+
+class FactoryEntity(BaseModel):
+    """One <MAINFACTORY> / <SUBFACTORY> entry from the insert XML."""
+
+    model_config = ConfigDict(frozen=True)
+
+    number: str = Field(description="FACNO from XML (廠商編號).")
+    name: str = Field(description="廠商名稱 (Chinese or English).")
+    address: str = Field(description="完整地址.")
+
+
+class CompanyEntity(BaseModel):
+    """One <COMPANY> entry from the insert XML."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(description="國內藥商名稱.")
+    address: str = Field(description="完整地址.")
 
 
 class InsertVersionInfo(BaseModel):
@@ -135,9 +162,16 @@ class GetPackageInsertResponse(BaseModel):
 
     license_no: str = Field(description="Echo of the license_no the caller passed.")
     error: ErrorInfo | None = Field(default=None, description="Null on success.")
+    format: Literal["rx", "otc"] = Field(
+        default="rx",
+        description=(
+            "Insert format dispatched from <DTYPE>: 'rx' (prescription) or 'otc' "
+            "(成藥/指示藥). Field names differ between formats — see fields docs."
+        ),
+    )
     fields: dict[str, str] = Field(
         default_factory=dict,
-        description="Map of field-name → plain-text content. Keys are stable identifiers (see ALL_FIELDS).",
+        description="Map of field-name → plain-text content. Keys are stable identifiers (see RX_FIELDS).",
     )
     field_sections: dict[str, str] = Field(
         default_factory=dict,
@@ -170,16 +204,44 @@ class GetPackageInsertResponse(BaseModel):
     )
     unknown_fields: list[UnknownFieldInfo] | None = Field(
         default=None,
-        description="Present iff the caller passed field names not in ALL_FIELDS; each entry has did_you_mean.",
+        description="Present iff the caller passed field names not in RX_FIELDS; each entry has did_you_mean.",
     )
-    unmapped_sections: list[UnmappedSectionInfo] = Field(
+    confirmed_absent: list[str] = Field(
         default_factory=list,
         description=(
-            "Sections present in the FDA XML but not mapped to any field name in "
-            "this wrapper's known set. Safety net for future TFDA additions — if "
-            "non-empty, the wrapper is missing coverage and `get_package_insert` "
-            "may be omitting data the user can see on mcp.fda.gov.tw."
+            "Field names whose source XML element exists but is empty — TFDA "
+            "structurally confirms this drug has no such information. Distinguishes "
+            "'查無 BBW' (tool failure) from 'TFDA 確認此藥無 BBW' (positive clinical fact). "
+            "Currently populated for: special_warning, characteristics."
         ),
+    )
+    additional_sections: list[AdditionalSection] = Field(
+        default_factory=list,
+        description=(
+            "Sections that carry text but have no named field in the active format "
+            "(e.g. OTC §7+, or a future TFDA addition). Each carries section_no + "
+            "title + verbatim text — quote and cite directly. Replaces the older "
+            "unmapped_sections safety net (which omitted the text)."
+        ),
+    )
+    images: list[ImageRef] = Field(
+        default_factory=list,
+        description=(
+            "Inline insert images (e.g. 藥品外觀). Metadata always present; data_url "
+            "(base64) only populated when response_format='full'."
+        ),
+    )
+    main_factories: list[FactoryEntity] = Field(
+        default_factory=list,
+        description="主製造廠 — from <MAINFACTORY> XML repeats. Empty list if absent.",
+    )
+    sub_factories: list[FactoryEntity] = Field(
+        default_factory=list,
+        description="分裝/包裝廠 — from <SUBFACTORY> XML repeats. Empty list if absent.",
+    )
+    companies: list[CompanyEntity] = Field(
+        default_factory=list,
+        description="國內藥商 — from <COMPANY> XML repeats. Empty list if absent.",
     )
 
 
@@ -231,15 +293,18 @@ class CheckInsertUpdatesResponse(BaseModel):
 
 
 __all__ = [
+    "AdditionalSection",
     "Attribution",
     "BatchError",
     "CheckInsertUpdatesResponse",
+    "CompanyEntity",
     "DrugLicenseRow",
     "ErrorInfo",
+    "FactoryEntity",
     "GetPackageInsertResponse",
+    "ImageRef",
     "InsertVersionInfo",
     "SearchDrugsResponse",
     "UnknownFieldInfo",
-    "UnmappedSectionInfo",
     "UpdateEntry",
 ]
