@@ -76,6 +76,13 @@ mcp: FastMCP = FastMCP(
         "the topic is in neither `fields` nor `additional_sections`, say the "
         "insert does not document it; direct the user to `human_url` for the "
         "official page. Do NOT fall back to training data.\n\n"
+        "**`available_sections` table of contents:** Every successful response "
+        "includes a flat list of every populated section in this drug's insert — "
+        "section number, title, char count, and the wrapper field name (or null "
+        "if unmapped). Use it to (a) see what else is in this insert beyond what "
+        "you requested in `fields`, (b) cite section numbers precisely, (c) decide "
+        "whether a second call for specific fields is worthwhile. NEVER assume the "
+        "`fields` dict is exhaustive — check the TOC first.\n\n"
         "If a tool returns an error, report it verbatim — do not silently fall "
         "back to training data. The user needs to know when official data was "
         "unavailable."
@@ -151,6 +158,15 @@ async def get_package_insert(
             storage_cautions (§13.4);
             Patient — patient_instructions (§14), other_info (§15);
             Metadata — last_update_date, insert_version.
+            OTC drugs (非處方藥: 成藥/乙類成藥/甲類成藥/指示藥) are detected automatically by
+            藥品類別 (<DTYPE>) and use a SEPARATE field set — usage (§2 用途, ≠ Rx indication),
+            directions (§4 用法用量, ≠ Rx dosage), otc_warnings (§5 警語, ≠ Rx warnings),
+            usage_precautions (parent §3) + do_not_use (§3.1) / consult_doctor_before_use (§3.2) /
+            consult_pharmacist_before_use (§3.3) / usage_other_precautions (§3.4),
+            adverse_warning (§5.1) / symptom_warning (§5.2), plus shared ingredients (§1.1) /
+            excipients (§1.2) / packaging (§6) / characteristics. The response `format` field is
+            "otc". Rx-only fields are not valid for OTC and vice versa. Any §7+ tail (儲存方式/
+            類別/急救及解毒方法/…) is returned in `additional_sections`.
             Optional/empty fields return empty strings (TFDA preserves order even when empty).
             Unknown names returned in `unknown_fields` with `did_you_mean` for self-correction.
 

@@ -90,6 +90,45 @@
       "default": null,
       "description": "Origin metadata — official data vs third-party wrapper."
     },
+    "available_sections": {
+      "description": "Table of contents — every populated section in the insert XML, with section number, title, char count, and the wrapper field name (or null if unmapped). Always returned regardless of which fields the caller requested. Lets LLM clients see what else is in this drug's insert without a second tool call; never assume `fields` is exhaustive.",
+      "items": {
+        "description": "One entry in the `available_sections` table-of-contents.\n\nLists EVERY populated section in the insert XML — including ones the caller\ndid not request — so the LLM can see what else is available without fetching\nagain. `field_name` is the wrapper field that returns this section's content\n(e.g. 'excipients' for §1.2), or None for tail sections this wrapper has not\nnamed (whose text lives in `additional_sections`).",
+        "properties": {
+          "char_count": {
+            "description": "Length in characters of this section's plain-text content.",
+            "type": "integer"
+          },
+          "field_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wrapper field name that returns this section's content (e.g. 'excipients' for §1.2). None if not mapped to a named field."
+          },
+          "section_no": {
+            "description": "Section number as in the FDA XML (e.g. '1.2', '6.5').",
+            "type": "string"
+          },
+          "title": {
+            "description": "Section title from the FDA XML (Traditional Chinese).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_no",
+          "title",
+          "char_count",
+          "field_name"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
     "companies": {
       "description": "國內藥商 — from <COMPANY> XML repeats. Empty list if absent.",
       "items": {

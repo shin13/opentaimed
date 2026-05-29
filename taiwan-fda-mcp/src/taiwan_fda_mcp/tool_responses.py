@@ -97,6 +97,29 @@ class AdditionalSection(BaseModel):
     text: str = Field(description="Verbatim plain-text content of this section.")
 
 
+class SectionTocEntry(BaseModel):
+    """One entry in the `available_sections` table-of-contents.
+
+    Lists EVERY populated section in the insert XML — including ones the caller
+    did not request — so the LLM can see what else is available without fetching
+    again. `field_name` is the wrapper field that returns this section's content
+    (e.g. 'excipients' for §1.2), or None for tail sections this wrapper has not
+    named (whose text lives in `additional_sections`).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    section_no: str = Field(description="Section number as in the FDA XML (e.g. '1.2', '6.5').")
+    title: str = Field(description="Section title from the FDA XML (Traditional Chinese).")
+    char_count: int = Field(description="Length in characters of this section's plain-text content.")
+    field_name: str | None = Field(
+        description=(
+            "Wrapper field name that returns this section's content "
+            "(e.g. 'excipients' for §1.2). None if not mapped to a named field."
+        ),
+    )
+
+
 class ImageRef(BaseModel):
     """Metadata for one inline insert image (e.g. 藥品外觀).
 
@@ -224,6 +247,16 @@ class GetPackageInsertResponse(BaseModel):
             "unmapped_sections safety net (which omitted the text)."
         ),
     )
+    available_sections: list[SectionTocEntry] = Field(
+        default_factory=list,
+        description=(
+            "Table of contents — every populated section in the insert XML, with "
+            "section number, title, char count, and the wrapper field name (or null "
+            "if unmapped). Always returned regardless of which fields the caller "
+            "requested. Lets LLM clients see what else is in this drug's insert "
+            "without a second tool call; never assume `fields` is exhaustive."
+        ),
+    )
     images: list[ImageRef] = Field(
         default_factory=list,
         description=(
@@ -305,6 +338,7 @@ __all__ = [
     "ImageRef",
     "InsertVersionInfo",
     "SearchDrugsResponse",
+    "SectionTocEntry",
     "UnknownFieldInfo",
     "UpdateEntry",
 ]

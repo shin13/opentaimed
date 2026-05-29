@@ -589,3 +589,125 @@ async def test_entity_lists_only_on_full(seeded_settings, fixtures_dir):
     assert len(full_result["sub_factories"]) == 1
     assert len(full_result["companies"]) == 2  # noqa: PLR2004
     assert full_result["companies"][0]["name"] == "暉致醫藥股份有限公司"
+
+
+# --- OTC dispatch + title-folding fidelity (Phase 3.2, ADR-0007 Strategy B) ----
+
+_OTC_LICENSE = "衛署成製字第007884號"  # 安皮露 (ONPYLU)
+
+
+async def _fetch_otc(seeded_settings, fixtures_dir, **kwargs):
+    xml = (fixtures_dir / "getdrugdoc_otc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        return (
+            await get_package_insert(license_no=_OTC_LICENSE, settings=seeded_settings, **kwargs)
+        ).model_dump()
+
+
+@pytest.mark.asyncio
+async def test_otc_dispatch_and_coverage(seeded_settings, fixtures_dir):
+    """安皮露 (DTYPE=成藥) dispatches to the OTC field space, not the Rx one."""
+    result = await _fetch_otc(seeded_settings, fixtures_dir, fields="all")
+    assert result["format"] == "otc"
+    fields = result["fields"]
+    # OTC field names present and populated:
+    assert "香港腳" in fields["usage"]  # §2 用途(適應症)
+    assert "Salicylic" in fields["ingredients"]  # §1.1
+    assert "敷於患部" in fields["directions"]  # §4 用法用量
+    assert result["field_sections"]["usage"] == "2"
+    assert result["field_sections"]["directions"] == "4"
+    # Rx-only field names MUST NOT appear in an OTC response:
+    for rx_only in ("indication", "dosage", "warnings", "side_effects", "pharmacology"):
+        assert rx_only not in fields, rx_only
+
+
+@pytest.mark.asyncio
+async def test_otc_title_borne_content_is_folded(seeded_settings, fixtures_dir):
+    """OTC §3.x / §5.2 content lives in nested <TITLE>s — it MUST be surfaced.
+
+    Without title-folding these safety-critical precautions would be silently
+    dropped (empty field + suppressed from additional_sections).
+    """
+    result = await _fetch_otc(seeded_settings, fixtures_dir, fields="all")
+    fields = result["fields"]
+    # §3.1 請勿使用 — content "曾因本藥成分引起過敏的人。" is a leaf <TITLE>.
+    assert "過敏" in fields["do_not_use"]
+    assert result["field_sections"]["do_not_use"] == "3.1"
+    # §3.4 其他注意事項 — 13 leaf-title items, incl. the外用-not-internal warning.
+    assert "不得內服" in fields["usage_other_precautions"]
+    # §5.2 症狀警示 — leaf-title children incl. anaphylaxis red flags.
+    assert "呼吸困難" in fields["symptom_warning"]
+    assert result["field_sections"]["symptom_warning"] == "5.2"
+
+
+@pytest.mark.asyncio
+async def test_otc_adverse_warning_from_value_table(seeded_settings, fixtures_dir):
+    """§5.1 副作用警示 carries a <VALUE> HTML table (the real 5.1, not the blank-NO placeholder)."""
+    result = await _fetch_otc(seeded_settings, fixtures_dir, fields="all")
+    assert "紅斑" in result["fields"]["adverse_warning"]
+    assert result["field_sections"]["adverse_warning"] == "5.1"
+
+
+@pytest.mark.asyncio
+async def test_otc_characteristics_shared_special_warning_invalid(seeded_settings, fixtures_dir):
+    """characteristics (<CHARACT>) is shared; special_warning is Rx-only (no OTC BBW)."""
+    result = await _fetch_otc(seeded_settings, fixtures_dir, fields=["characteristics", "special_warning"])
+    assert "殺菌" in result["fields"]["characteristics"]
+    assert "characteristics" not in result["confirmed_absent"]  # populated
+    # special_warning is not a valid OTC field → surfaced as unknown, not silently dropped.
+    assert result["unknown_fields"] is not None
+    assert any(u["input"] == "special_warning" for u in result["unknown_fields"])
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_returns_available_sections_toc(seeded_settings, fixtures_dir):
+    """Every response carries a TOC of every populated section, regardless of `fields`."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                fields=["indication"],  # narrow request — TOC must still list everything
+                settings=seeded_settings,
+            )
+        ).model_dump()
+
+    toc = result["available_sections"]
+    assert isinstance(toc, list)
+    assert len(toc) > 5  # noqa: PLR2004
+    for entry in toc:
+        assert set(entry) >= {"section_no", "title", "char_count", "field_name"}
+        assert entry["char_count"] >= 0
+
+    indication_entry = next(e for e in toc if e["section_no"] == "2")
+    assert indication_entry["title"] == "適應症"
+    assert indication_entry["field_name"] == "indication"
+    assert indication_entry["char_count"] > 0
+
+    # A section NOT requested but present must still appear, tagged with its field name.
+    pediatric_entry = next((e for e in toc if e["section_no"] == "6.4"), None)
+    assert pediatric_entry is not None
+    assert pediatric_entry["field_name"] == "pediatric"
+
+    # Unmapped section 99 appears with field_name=None.
+    section99 = next((e for e in toc if e["section_no"] == "99"), None)
+    assert section99 is not None
+    assert section99["field_name"] is None
+
+
+@pytest.mark.asyncio
+async def test_otc_toc_lists_title_borne_sections(seeded_settings, fixtures_dir):
+    """OTC TOC lists §3.1 do_not_use even though its content is title-borne (no <VALUE>)."""
+    result = await _fetch_otc(seeded_settings, fixtures_dir)
+    toc = {e["section_no"]: e for e in result["available_sections"]}
+    assert toc["2"]["field_name"] == "usage"
+    assert toc["3.1"]["field_name"] == "do_not_use"
+    assert toc["3.1"]["char_count"] > 0  # folded title content counted
+    # Leaf title-only sub-items (3.1.1) are NOT listed individually (content under the field).
+    assert "3.1.1" not in toc
