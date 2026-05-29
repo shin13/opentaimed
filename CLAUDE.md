@@ -126,16 +126,22 @@ No authentication. JSON.
 
 ### License code mapping
 
-`衛署藥輸字第021571號` → `02021571`. Seven Rx prefixes are verified in
-`taiwan-fda-mcp/src/taiwan_fda_mcp/sources/license_code.py`:
+`衛署藥輸字第021571號` → `02021571`. The full 27-entry prefix table
+(ADR-0007 附錄一) is in
+`taiwan-fda-mcp/src/taiwan_fda_mcp/sources/license_code.py` — the 衛署
+(`0x`/`1x`/`2x`/`41`), 衛部 (`5x`/`6x`/`7x`/`91`), and legacy 內衛
+(`12`–`16`) series, covering Rx (`藥製`/`藥輸`), OTC (`成製`/`成輸`),
+biologics (`菌疫`), orphan (`罕藥`/`罕菌疫`), and 陸輸 categories.
+Representative rows:
 
 | Prefix | Code | Meaning |
 |---|---|---|
 | 衛署藥製字 | 01 | domestically-manufactured Rx |
 | 衛署藥輸字 | 02 | imported Rx |
-| 內衛藥製字 | 12 | older domestic Rx (legacy) |
-| 衛部藥製字 | 51 | newer domestic Rx |
+| 衛署成製字 | 03 | domestic OTC (成藥) |
+| 內衛成製字 | 14 | legacy domestic OTC |
 | 衛部藥輸字 | 52 | newer imported Rx |
+| 衛部成製字 | 53 | newer domestic OTC |
 | 衛部菌疫輸字 | 60 | imported biologics |
 | 衛部罕藥製字 | 71 | orphan / rare-disease drugs |
 
