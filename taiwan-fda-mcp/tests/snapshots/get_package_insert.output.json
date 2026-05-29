@@ -2,6 +2,33 @@
   "additionalProperties": false,
   "description": "Response shape for `get_package_insert`.\n\nOn success: `error` is null and all payload fields are populated.\nOn failure: `error` is populated and payload fields are absent / default.\n\nCitation requirement (per spec §14): every clinical claim returned in\n`fields` is traceable via (source_url, retrieved_at, last_update_date,\nfield_sections[field_name]) — all four are present on success.",
   "properties": {
+    "additional_sections": {
+      "description": "Sections that carry text but have no named field in the active format (e.g. OTC §7+, or a future TFDA addition). Each carries section_no + title + verbatim text — quote and cite directly. Replaces the older unmapped_sections safety net (which omitted the text).",
+      "items": {
+        "description": "One insert section that carries text but has no named field in the active format.\n\nSupersedes the older `unmapped_sections` safety net: it returns the section's\ntrue `section_no` AND its verbatim `text`, so a section that this wrapper has\nnot given a field name (e.g. an OTC §7+ block, or a future TFDA addition) is\nsurfaced with its content intact rather than being silently dropped. Because\nthe raw text and true section number are returned, there is no risk of the LLM\nfabricating a field mapping — quote `text` and cite `section_no` directly.",
+        "properties": {
+          "section_no": {
+            "description": "Section number as it appears in the FDA XML (e.g. '7', '16').",
+            "type": "string"
+          },
+          "text": {
+            "description": "Verbatim plain-text content of this section.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Section title from the FDA XML (Traditional Chinese).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_no",
+          "title",
+          "text"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
     "alternate_versions": {
       "description": "Older insert versions returned alongside the newest (rare; usually empty).",
       "items": {
@@ -63,6 +90,35 @@
       "default": null,
       "description": "Origin metadata — official data vs third-party wrapper."
     },
+    "companies": {
+      "description": "國內藥商 — from <COMPANY> XML repeats. Empty list if absent.",
+      "items": {
+        "description": "One <COMPANY> entry from the insert XML.",
+        "properties": {
+          "address": {
+            "description": "完整地址.",
+            "type": "string"
+          },
+          "name": {
+            "description": "國內藥商名稱.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "confirmed_absent": {
+      "description": "Field names whose source XML element exists but is empty — TFDA structurally confirms this drug has no such information. Distinguishes '查無 BBW' (tool failure) from 'TFDA 確認此藥無 BBW' (positive clinical fact). Currently populated for: special_warning, characteristics.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "error": {
       "anyOf": [
         {
@@ -101,8 +157,17 @@
       "additionalProperties": {
         "type": "string"
       },
-      "description": "Map of field-name → plain-text content. Keys are stable identifiers (see ALL_FIELDS).",
+      "description": "Map of field-name → plain-text content. Keys are stable identifiers (see RX_FIELDS).",
       "type": "object"
+    },
+    "format": {
+      "default": "rx",
+      "description": "Insert format dispatched from <DTYPE>: 'rx' (prescription) or 'otc' (成藥/指示藥). Field names differ between formats — see fields docs.",
+      "enum": [
+        "rx",
+        "otc"
+      ],
+      "type": "string"
     },
     "human_url": {
       "anyOf": [
@@ -115,6 +180,50 @@
       ],
       "default": null,
       "description": "Human URL — official TFDA web page for this insert."
+    },
+    "images": {
+      "description": "Inline insert images (e.g. 藥品外觀). Metadata always present; data_url (base64) only populated when response_format='full'.",
+      "items": {
+        "description": "Metadata for one inline insert image (e.g. 藥品外觀).\n\n`data_url` carries the base64 payload as a `data:` URI ONLY when the caller\nrequested `response_format=\"full\"`; otherwise it is null so the LLM still\nknows an image exists (and which section) without paying the token cost.",
+        "properties": {
+          "caption": {
+            "description": "Section title acting as the image caption.",
+            "type": "string"
+          },
+          "data_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "`data:{mime};base64,...` URI — populated only when response_format='full'."
+          },
+          "mime": {
+            "description": "MIME type (e.g. 'image/jpeg').",
+            "type": "string"
+          },
+          "section_no": {
+            "description": "Section number the image belongs to (e.g. '1.4').",
+            "type": "string"
+          },
+          "size_bytes": {
+            "description": "Decoded payload size in bytes.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "section_no",
+          "caption",
+          "mime",
+          "size_bytes"
+        ],
+        "type": "object"
+      },
+      "type": "array"
     },
     "insert_version": {
       "anyOf": [
@@ -144,6 +253,33 @@
       "description": "Echo of the license_no the caller passed.",
       "type": "string"
     },
+    "main_factories": {
+      "description": "主製造廠 — from <MAINFACTORY> XML repeats. Empty list if absent.",
+      "items": {
+        "description": "One <MAINFACTORY> / <SUBFACTORY> entry from the insert XML.",
+        "properties": {
+          "address": {
+            "description": "完整地址.",
+            "type": "string"
+          },
+          "name": {
+            "description": "廠商名稱 (Chinese or English).",
+            "type": "string"
+          },
+          "number": {
+            "description": "FACNO from XML (廠商編號).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "name",
+          "address"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
     "retrieved_at": {
       "anyOf": [
         {
@@ -167,6 +303,33 @@
       ],
       "default": null,
       "description": "Machine URL — TFDA GetDrugDoc API XML for this license (200 OK; cite as evidence)."
+    },
+    "sub_factories": {
+      "description": "分裝/包裝廠 — from <SUBFACTORY> XML repeats. Empty list if absent.",
+      "items": {
+        "description": "One <MAINFACTORY> / <SUBFACTORY> entry from the insert XML.",
+        "properties": {
+          "address": {
+            "description": "完整地址.",
+            "type": "string"
+          },
+          "name": {
+            "description": "廠商名稱 (Chinese or English).",
+            "type": "string"
+          },
+          "number": {
+            "description": "FACNO from XML (廠商編號).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "name",
+          "address"
+        ],
+        "type": "object"
+      },
+      "type": "array"
     },
     "unknown_fields": {
       "anyOf": [
@@ -203,34 +366,7 @@
         }
       ],
       "default": null,
-      "description": "Present iff the caller passed field names not in ALL_FIELDS; each entry has did_you_mean."
-    },
-    "unmapped_sections": {
-      "description": "Sections present in the FDA XML but not mapped to any field name in this wrapper's known set. Safety net for future TFDA additions — if non-empty, the wrapper is missing coverage and `get_package_insert` may be omitting data the user can see on mcp.fda.gov.tw.",
-      "items": {
-        "description": "One TFDA insert section present in the XML but not yet mapped to a field name.\n\nSurfaced as a safety net: when TFDA adds new sections to the insert format,\nthey appear here instead of being silently dropped. Acts as the canary for\nincidents like the 1.2 賦形劑 gap (May 2026).",
-        "properties": {
-          "note": {
-            "default": "This section exists in the FDA XML but the wrapper has no field name for it yet. Do NOT invent a mapping to any field listed in `fields` — those mappings are authoritative and would already include this section if it matched. Direct the user to `human_url` for the official text of this section.",
-            "description": "Constant safety-net guidance for LLM clients — identical in every entry. Surfaced as a payload field (not just schema docs) because live testing showed LLMs ignored description-only guidance and fabricated mappings between unmapped sections and `fields` keys.",
-            "type": "string"
-          },
-          "section_no": {
-            "description": "Section number as it appears in the FDA XML (e.g. '1.2', '16').",
-            "type": "string"
-          },
-          "title": {
-            "description": "Section title from the FDA XML (Traditional Chinese).",
-            "type": "string"
-          }
-        },
-        "required": [
-          "section_no",
-          "title"
-        ],
-        "type": "object"
-      },
-      "type": "array"
+      "description": "Present iff the caller passed field names not in RX_FIELDS; each entry has did_you_mean."
     }
   },
   "required": [

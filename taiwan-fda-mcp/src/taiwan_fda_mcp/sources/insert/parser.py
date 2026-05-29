@@ -1,11 +1,13 @@
 # path: src/taiwan_fda_mcp/sources/insert/parser.py
 # brief: Parse GetDrugDoc XML responses into DrugInsert models.
 
+import base64
+import binascii
 import html
 from xml.etree import ElementTree as ET
 
 from taiwan_fda_mcp.exceptions import InsertParseError, RCode
-from taiwan_fda_mcp.models import DrugInsert, InsertSection
+from taiwan_fda_mcp.models import DrugInsert, InsertImage, InsertSection
 
 
 def parse_get_drug_doc(xml_bytes: bytes) -> list[DrugInsert]:
@@ -72,12 +74,14 @@ def _parse_document(doc: ET.Element) -> DrugInsert:
         warning_html=_decoded_text(doc.find("WARNING")),
         sections=_parse_sections(doc.find("CONTENT")),
         main_factory=_parse_entities(
-            doc.findall("MAINFACTORY"), name_tag="FACNAME", addr_tag="FACADD"
+            doc.findall("MAINFACTORY"), name_tag="FACNAME", addr_tag="FACADD", no_tag="FACNO"
         ),
         sub_factories=_parse_entities(
-            doc.findall("SUBFACTORY"), name_tag="FACNAME", addr_tag="FACADD"
+            doc.findall("SUBFACTORY"), name_tag="FACNAME", addr_tag="FACADD", no_tag="FACNO"
         ),
-        companies=_parse_entities(doc.findall("COMPANY"), name_tag="COMNAME", addr_tag="COMADD"),
+        companies=_parse_entities(
+            doc.findall("COMPANY"), name_tag="COMNAME", addr_tag="COMADD", no_tag="COMNO"
+        ),
     )
 
 
@@ -101,20 +105,44 @@ def _parse_section(section_el: ET.Element) -> InsertSection:
     except ValueError:
         level = 1
 
-    text = ""
-    value_el = section_el.find("VALUE")
-    if value_el is not None and value_el.get("type") == "text":
-        text = _decoded_text(value_el)
+    text_parts: list[str] = []
+    images: list[InsertImage] = []
+    for value_el in section_el.findall("VALUE"):
+        vtype = value_el.get("type")
+        if vtype == "text":
+            decoded = _decoded_text(value_el)
+            if decoded:
+                text_parts.append(decoded)
+        elif vtype == "image":
+            images.append(_parse_image(value_el))
+    text = "\n\n".join(text_parts)
 
     children = [_parse_section(child) for child in section_el.findall("SECTION")]
-    return InsertSection(number=no, level=level, title=title, text=text, children=children)
+    return InsertSection(
+        number=no, level=level, title=title, text=text, images=images, children=children
+    )
+
+
+def _parse_image(value_el: ET.Element) -> InsertImage:
+    """Build an InsertImage from a `<VALUE type="image" encode="1">` element."""
+    data = (value_el.text or "").strip()
+    try:
+        size_bytes = len(base64.b64decode(data, validate=True)) if data else 0
+    except (binascii.Error, ValueError):
+        size_bytes = 0
+    return InsertImage(
+        mime=value_el.get("mimetype", ""),
+        size_bytes=size_bytes,
+        data=data,
+    )
 
 
 def _parse_entities(
-    elements: list[ET.Element], *, name_tag: str, addr_tag: str
+    elements: list[ET.Element], *, name_tag: str, addr_tag: str, no_tag: str
 ) -> list[dict[str, str]]:
     return [
         {
+            "number": (el.findtext(no_tag) or "").strip(),
             "name": (el.findtext(name_tag) or "").strip(),
             "address": (el.findtext(addr_tag) or "").strip(),
         }

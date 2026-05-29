@@ -23,6 +23,18 @@ class DrugLicense(BaseModel):
     last_change_date: str = Field(default="", description="異動日期 YYYY/MM/DD")
 
 
+class InsertImage(BaseModel):
+    """One `<VALUE type="image" encode="1">` payload attached to a section.
+
+    TFDA embeds base64-encoded images (e.g. 藥品外觀) inline in the insert XML.
+    The base64 string is retained verbatim; `size_bytes` is the decoded length.
+    """
+
+    mime: str = Field(default="", description="MIME type from the `mimetype` attribute.")
+    size_bytes: int = Field(default=0, description="Decoded payload size in bytes.")
+    data: str = Field(default="", description="Base64-encoded image payload (encode=1).")
+
+
 class InsertSection(BaseModel):
     """One section of a 仿單."""
 
@@ -31,6 +43,9 @@ class InsertSection(BaseModel):
     title: str = Field(description="Section title")
     text: str = Field(
         default="", description="HTML-decoded body text (may contain inline HTML tags)"
+    )
+    images: list[InsertImage] = Field(
+        default_factory=list, description="Inline base64 images on this section (usually empty)."
     )
     children: list["InsertSection"] = Field(default_factory=list)
 
