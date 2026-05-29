@@ -32,3 +32,4 @@ session-state notes kept in `.private/`.
 | [0004](./0004-mit-license-with-clinical-disclaimer.md) | MIT License with a separate informational clinical disclaimer | Accepted |
 | [0005](./0005-private-nested-repo-pattern.md) | `.private/` as a nested independent git repository | Accepted |
 | [0006](./0006-flat-response-schema-alignment-with-healthcare-mcp-norms.md) | Flat response schema for `get_package_insert`, aligned with healthcare MCP norms | Accepted |
+| [0007](./0007-rx-otc-dual-format-full-fidelity.md) | Rx/OTC dual-format support with full-fidelity insert return | Accepted |
