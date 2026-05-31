@@ -1,7 +1,10 @@
 # path: tests/unit/test_tools.py
 # brief: Verify tools.py entry-point behaviour.
 
+import asyncio
 import json
+import os
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +14,7 @@ import respx
 
 import taiwan_fda_mcp.tools as _tools_mod
 from taiwan_fda_mcp.config import Settings
+from taiwan_fda_mcp.exceptions import DatasetFetchError, RCode
 from taiwan_fda_mcp.sources.opendata.dataset37 import parse_rows, write_to_cache
 from taiwan_fda_mcp.tools import (
     check_insert_updates,
@@ -21,8 +25,19 @@ from taiwan_fda_mcp.tools import (
 
 @pytest.fixture(autouse=True)
 def _reset_module_caches():
-    """Clear tools.py module-level Dataset 37 memo between tests."""
+    """Clear tools.py module-level Dataset 37 SWR state between tests."""
     _tools_mod._LICENSES_CACHE = None
+    _tools_mod._LICENSES_LOADED_AT = None
+    _tools_mod._REFRESH_TASK = None
+
+
+def make_settings(*, cache_dir: Path, ttl_hours: int = 24) -> Settings:
+    """Settings pointed at a temp cache dir, with no real rate-limit delay."""
+    return Settings(  # type: ignore[call-arg]
+        DATASET37_CACHE_DIR=cache_dir,
+        DATASET37_TTL_HOURS=ttl_hours,
+        FDA_RATE_LIMIT_INTERVAL_SECONDS=0.0,
+    )
 
 
 @pytest.fixture
@@ -708,3 +723,128 @@ async def test_otc_toc_lists_stable_parent_sections(seeded_settings, fixtures_di
     # §3.x sub-sections are not named fields; title-only ones are not listed individually.
     assert "3.1.1" not in toc
     assert toc.get("3.1", {}).get("field_name") is None
+
+
+# --- SWR refresh (stale-while-revalidate, ADR-0009) ---------------------------
+
+
+@pytest.mark.asyncio
+async def test_stale_memo_serves_stale_and_schedules_refresh(monkeypatch, tmp_path):
+    """A stale memo is returned immediately AND a background refresh is scheduled."""
+    fetched = {"n": 0}
+
+    async def fake_fetch(base_url, **_kwargs):
+        fetched["n"] += 1
+        return []
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", fake_fetch)
+    s = make_settings(cache_dir=tmp_path, ttl_hours=24)
+    _tools_mod._LICENSES_CACHE = ["stale"]
+    _tools_mod._LICENSES_LOADED_AT = 0.0  # epoch 1970 → unambiguously stale
+    _tools_mod._REFRESH_TASK = None
+
+    out = await _tools_mod._load_or_refresh_licenses(s)
+
+    assert out == ["stale"]  # served stale immediately — did NOT block on the fetch
+    assert _tools_mod._REFRESH_TASK is not None  # background refresh was scheduled
+    await _tools_mod._REFRESH_TASK
+    assert fetched["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_single_inflight_refresh_guard(monkeypatch, tmp_path):
+    """Two stale calls while a refresh is running spawn only ONE download."""
+    started = {"n": 0}
+
+    async def slow_fetch(base_url, **_kwargs):
+        started["n"] += 1
+        await asyncio.sleep(0.05)
+        return []
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", slow_fetch)
+    s = make_settings(cache_dir=tmp_path, ttl_hours=24)
+    _tools_mod._LICENSES_CACHE = ["stale"]
+    _tools_mod._LICENSES_LOADED_AT = 0.0
+    _tools_mod._REFRESH_TASK = None
+
+    await _tools_mod._load_or_refresh_licenses(s)
+    await _tools_mod._load_or_refresh_licenses(s)  # second stale call, first still running
+    await _tools_mod._REFRESH_TASK
+    assert started["n"] == 1  # guard prevented a duplicate concurrent download
+
+
+@pytest.mark.asyncio
+async def test_background_failure_keeps_stale(monkeypatch, tmp_path):
+    """A failed background refresh leaves the stale memo intact and never raises."""
+
+    async def boom(*a, **k):
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", boom)
+    s = make_settings(cache_dir=tmp_path, ttl_hours=0)  # always stale
+    _tools_mod._LICENSES_CACHE = ["old"]
+    _tools_mod._LICENSES_LOADED_AT = 0.0
+    _tools_mod._REFRESH_TASK = None
+
+    out = await _tools_mod._load_or_refresh_licenses(s)
+
+    assert out == ["old"]  # served stale, no raise
+    await _tools_mod._REFRESH_TASK
+    assert _tools_mod._LICENSES_CACHE == ["old"]  # failed refresh kept the stale memo
+
+
+@pytest.mark.asyncio
+async def test_cold_start_stale_disk_serves_then_refreshes(monkeypatch, tmp_path):
+    """Cold start with a stale on-disk cache serves it and schedules a refresh."""
+    fetched = {"n": 0}
+
+    async def fake_fetch(base_url, **_kwargs):
+        fetched["n"] += 1
+        return []
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", fake_fetch)
+    s = make_settings(cache_dir=tmp_path, ttl_hours=24)
+    # Seed a cache file and backdate its mtime so it reads as stale.
+    write_to_cache([], tmp_path)
+    stale_path = tmp_path / "dataset37.json"
+    old = time.time() - 48 * 3600
+    os.utime(stale_path, (old, old))
+
+    out = await _tools_mod._load_or_refresh_licenses(s)  # cold start (memo is None)
+
+    assert out == []  # served disk cache immediately
+    assert _tools_mod._REFRESH_TASK is not None  # stale disk → refresh scheduled
+    await _tools_mod._REFRESH_TASK
+    assert fetched["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_search_response_carries_freshness(seeded_settings):
+    """search_drugs surfaces explicit dataset freshness so the LLM can judge staleness."""
+    resp = await search_drugs(query="脈優", settings=seeded_settings)
+    assert resp.dataset_retrieved_at is not None
+    datetime.fromisoformat(resp.dataset_retrieved_at)  # valid ISO 8601
+    assert isinstance(resp.dataset_age_hours, float)
+    assert resp.dataset_age_hours >= 0
+    assert resp.is_stale is False  # freshly seeded cache is within TTL
+
+
+@pytest.mark.asyncio
+async def test_search_response_is_stale_when_serving_stale(monkeypatch, tmp_path):
+    """When the served index is past TTL (refresh pending/failed), is_stale is True."""
+
+    async def boom(base_url, **_kwargs):
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", boom)
+    s = make_settings(cache_dir=tmp_path, ttl_hours=0)  # any age reads as stale
+    _tools_mod._LICENSES_CACHE = []
+    _tools_mod._LICENSES_LOADED_AT = 0.0
+
+    resp = await search_drugs(query="脈優", settings=s)
+
+    assert resp.is_stale is True
+    assert resp.dataset_age_hours is not None
+    assert resp.dataset_age_hours > 0
+    if _tools_mod._REFRESH_TASK is not None:  # drain the scheduled background refresh
+        await _tools_mod._REFRESH_TASK
