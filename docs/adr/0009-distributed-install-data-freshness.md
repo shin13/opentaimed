@@ -137,6 +137,6 @@ updates smoother than `git clone`; pursued in Phase 2, not decided here.
 ## References
 
 - `.private/docs/sources/website-search-surface-and-dataset-mapping.md` (Part 2: no conditional-GET headers; Part 6: full strategy).
-- Implementation plan: `docs/superpowers/plans/2026-05-31-pre-launch-distribution-and-hosting.md` (Phase 0).
+- Implementation plan: `.private/docs/plans/2026-05-31-pre-launch-distribution-and-hosting.md` (Phase 0).
 - Code: `taiwan-fda-mcp/src/taiwan_fda_mcp/tools.py` (`_load_or_refresh_licenses` — the dead-TTL short-circuit), `config.py` (`DATASET37_CACHE_DIR`, `DATASET37_TTL_HOURS`, `FDA_RATE_LIMIT_INTERVAL_SECONDS`), `sources/opendata/{client.py,dataset37.py}`.
 - [ADR-0008](./0008-multi-field-search-flat-filters.md) — the search expansion that rides on this cache.
