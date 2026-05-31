@@ -1,0 +1,74 @@
+name: publish
+
+# Publish taiwan-fda-mcp to PyPI on a version tag (e.g. `v0.2.0`).
+#
+# Uses PyPI Trusted Publishing (OIDC): no API token is stored in the repo or
+# in secrets. PyPI verifies the workflow's short-lived OIDC identity instead.
+# One-time setup on PyPI: add a Trusted Publisher for project `taiwan-fda-mcp`
+# pointing at owner `shin13`, repo `opentaimed`, workflow `publish.yml`,
+# environment `pypi`.
+#
+# Hardening note (per CLAUDE.md "Planned"): when the repo adopts commit-SHA
+# action pinning, pin every `uses:` below — especially the publish action,
+# which carries the OIDC identity. `release/v1` is PyPA's recommended stable
+# ref until then.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build distributions
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: taiwan-fda-mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: taiwan-fda-mcp/uv.lock
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Upload distributions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: taiwan-fda-mcp/dist/
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # The `pypi` environment is the trust anchor for OIDC publishing and the
+    # natural place to attach a manual-approval protection rule later.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/taiwan-fda-mcp/
+    permissions:
+      # Mint the short-lived OIDC token Trusted Publishing exchanges for an
+      # upload credential. No long-lived token is stored anywhere.
+      id-token: write
+    steps:
+      - name: Download distributions artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
