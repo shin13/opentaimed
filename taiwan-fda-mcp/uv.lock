@@ -1123,6 +1123,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
     { name = "httpx" },
+    { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-json-logger" },
@@ -1141,6 +1142,7 @@ dev = [
 requires-dist = [
     { name = "fastmcp", specifier = ">=3.3.1" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "platformdirs", specifier = ">=4.9" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "python-json-logger", specifier = ">=4.1.0" },

@@ -65,6 +65,21 @@ class SearchDrugsResponse(BaseModel):
         default_factory=list,
         description="Sorted by license-prefix authority (import/原廠 first), then name_zh.",
     )
+    dataset_retrieved_at: str | None = Field(
+        default=None,
+        description="ISO 8601 UTC time the search index (Dataset 37) was last loaded.",
+    )
+    dataset_age_hours: float | None = Field(
+        default=None,
+        description="Age of the search index in hours at response time.",
+    )
+    is_stale: bool = Field(
+        default=False,
+        description=(
+            "True if the search index is older than its TTL (a background refresh "
+            "is in flight or last failed); results are still served from cache."
+        ),
+    )
     error: ErrorInfo | None = Field(default=None, description="Null on success.")
 
 

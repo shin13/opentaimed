@@ -1,6 +1,7 @@
 # path: src/taiwan_fda_mcp/sources/opendata/client.py
 # brief: Async HTTP client for data.fda.gov.tw open-data exports.
 
+import asyncio
 import io
 import json
 import logging
@@ -17,12 +18,19 @@ _logger = logging.getLogger(__name__)
 _DATASET37_PATH = "/data/opendata/export/37/json"
 
 
-async def fetch_dataset37(base_url: str, timeout: float = 60.0) -> list[DrugLicense]:  # noqa: ASYNC109
+async def fetch_dataset37(
+    base_url: str,
+    timeout: float = 60.0,  # noqa: ASYNC109
+    rate_limit_interval: float = 0.0,
+) -> list[DrugLicense]:
     """Download, unzip, and parse the Dataset 37 export.
 
     Args:
         base_url: e.g. 'https://data.fda.gov.tw'
         timeout: per-request timeout in seconds.
+        rate_limit_interval: seconds to sleep AFTER the request — a good-citizen
+            throttle so background refreshes never hammer the government endpoint.
+            0 disables it (the default, for tests).
 
     Returns:
         List of DrugLicense.
@@ -43,6 +51,9 @@ async def fetch_dataset37(base_url: str, timeout: float = 60.0) -> list[DrugLice
             RCode.DATASET_FETCH_FAILED,
             f"Failed to download Dataset 37: {exc}",
         ) from exc
+    finally:
+        if rate_limit_interval > 0:
+            await asyncio.sleep(rate_limit_interval)
 
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:

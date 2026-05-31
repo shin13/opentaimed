@@ -1,6 +1,7 @@
 # path: tests/unit/test_dataset37.py
 # brief: Verify Dataset 37 parser, on-disk cache, and download logic.
 
+import asyncio
 import io
 import json
 import os
@@ -90,3 +91,24 @@ async def test_fetch_dataset37_raises_on_http_error():
         router.get("/data/opendata/export/37/json").mock(return_value=httpx.Response(500))
         with pytest.raises(DatasetFetchError):
             await fetch_dataset37("https://data.fda.gov.tw")
+
+
+@pytest.mark.asyncio
+async def test_fetch_dataset37_applies_rate_limit(fixtures_dir, monkeypatch):
+    """fetch_dataset37 honours a good-citizen throttle so refreshes don't hammer the gov API."""
+    slept: list[float] = []
+
+    async def fake_sleep(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    raw = (fixtures_dir / "dataset37_sample.json").read_bytes()
+    zip_bytes = _make_zip(raw)
+
+    async with respx.mock(base_url="https://data.fda.gov.tw") as router:
+        router.get("/data/opendata/export/37/json").mock(
+            return_value=httpx.Response(200, content=zip_bytes)
+        )
+        await fetch_dataset37("https://data.fda.gov.tw", rate_limit_interval=0.5)
+
+    assert 0.5 in slept  # noqa: PLR2004
