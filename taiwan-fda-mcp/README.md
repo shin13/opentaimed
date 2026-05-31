@@ -14,7 +14,7 @@ MCP server exposing Taiwan FDA drug information (仿單 + 許可證 metadata) to
 
 ## Tools
 
-- `search_drugs(query, search_by, limit)` — substring search across name / ingredient / license number
+- `search_drugs(query, name_zh, name_en, ingredient, indication, applicant, manufacturer, form, drug_class, country, limit)` — multi-field license search over Dataset 37. All filters optional and AND-combined; free-text fields match by case-insensitive substring, `country` by exact code. Duplicate-manufacturer rows collapse into one result with a `manufacturers` list.
 - `get_package_insert(license_no, fields)` — fetch 仿單 sections + citation metadata
 - `check_insert_updates(since_date, license_list?)` — find inserts updated since the given date
 
@@ -59,5 +59,5 @@ Restart Claude Desktop. The three tools will appear in the tool list. Ask in Chi
 uv run pytest                       # unit tests (default)
 uv run pytest -m integration        # live FDA API tests
 uv run ruff check .
-uv run pyright
+uv run pyright src
 ```
