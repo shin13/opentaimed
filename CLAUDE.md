@@ -222,6 +222,15 @@ not be silently dropped when a future component is implemented.
   `[Unreleased]` slot.
 - [SemVer](https://semver.org/) for version numbers.
 - PRs require CI green before merge.
+- **AI-attribution trailer.** Disclose AI assistance with an
+  `Assisted-By: <tool>` commit trailer — **never** `Co-Authored-By:`.
+  GitHub parses `Co-Authored-By:` by email and counts it in the
+  contributor graph; `Assisted-By:` keeps the disclosure in the message
+  without inflating contributor metrics (the emerging open-source norm).
+  `.claude/settings.json` sets `includeCoAuthoredBy: false` so the agent
+  harness does not auto-add the graph-polluting trailer; add `Assisted-By:`
+  manually. Pre-existing `Co-authored-by:` commits on `main` are left as-is
+  (rewriting protected history isn't worth it).
 
 ### CI/CD
 
