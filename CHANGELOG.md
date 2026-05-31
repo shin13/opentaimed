@@ -74,6 +74,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   `製造廠國別`).
 - Duplicate-manufacturer license rows are now **collapsed** into one result
   with a `manufacturers: list[str]` — resolves the known duplicate-row issue.
+- **PyPI distribution scaffolding** (pre-launch Phase 2): `.github/workflows/publish.yml`
+  publishes to PyPI on a `v*` tag via Trusted Publishing (OIDC — no stored
+  token); `tests/unit/test_packaging.py` guards the `taiwan-fda-mcp-server`
+  console-script entry point; README gains an `Install` section with `uvx`
+  (zero-clone) + from-source paths and Claude Code / Claude Desktop / Codex
+  client configs. Not yet published — the package name is reserved on PyPI.
 
 ### Changed
 - `taiwan-fda-mcp/.env.example` rewritten to match `config.py`: every var
