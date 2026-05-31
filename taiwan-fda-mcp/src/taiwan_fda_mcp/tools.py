@@ -235,7 +235,10 @@ async def _refresh_into_memo(settings: Settings) -> None:
     """Fetch Dataset 37 and replace the memo + disk cache; keep stale on failure."""
     global _LICENSES_CACHE, _LICENSES_LOADED_AT
     try:
-        rows = await fetch_dataset37(settings.FDA_OPENDATA_BASE_URL)
+        rows = await fetch_dataset37(
+            settings.FDA_OPENDATA_BASE_URL,
+            rate_limit_interval=settings.FDA_RATE_LIMIT_INTERVAL_SECONDS,
+        )
     except DatasetFetchError:
         _logger.warning("dataset37.refresh.failed")  # keep stale memo; retry next call
         return

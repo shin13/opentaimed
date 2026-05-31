@@ -733,7 +733,7 @@ async def test_stale_memo_serves_stale_and_schedules_refresh(monkeypatch, tmp_pa
     """A stale memo is returned immediately AND a background refresh is scheduled."""
     fetched = {"n": 0}
 
-    async def fake_fetch(base_url):
+    async def fake_fetch(base_url, **_kwargs):
         fetched["n"] += 1
         return []
 
@@ -756,7 +756,7 @@ async def test_single_inflight_refresh_guard(monkeypatch, tmp_path):
     """Two stale calls while a refresh is running spawn only ONE download."""
     started = {"n": 0}
 
-    async def slow_fetch(base_url):
+    async def slow_fetch(base_url, **_kwargs):
         started["n"] += 1
         await asyncio.sleep(0.05)
         return []
@@ -798,7 +798,7 @@ async def test_cold_start_stale_disk_serves_then_refreshes(monkeypatch, tmp_path
     """Cold start with a stale on-disk cache serves it and schedules a refresh."""
     fetched = {"n": 0}
 
-    async def fake_fetch(base_url):
+    async def fake_fetch(base_url, **_kwargs):
         fetched["n"] += 1
         return []
 
@@ -833,7 +833,7 @@ async def test_search_response_carries_freshness(seeded_settings):
 async def test_search_response_is_stale_when_serving_stale(monkeypatch, tmp_path):
     """When the served index is past TTL (refresh pending/failed), is_stale is True."""
 
-    async def boom(base_url):
+    async def boom(base_url, **_kwargs):
         raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
 
     monkeypatch.setattr(_tools_mod, "fetch_dataset37", boom)
