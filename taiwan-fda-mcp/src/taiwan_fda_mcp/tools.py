@@ -29,7 +29,6 @@ from taiwan_fda_mcp.sources.opendata.dataset37 import (
     load_from_cache,
     write_to_cache,
 )
-from taiwan_fda_mcp.sources.opendata.search import SearchField
 from taiwan_fda_mcp.sources.opendata.search import search_drugs as _search
 from taiwan_fda_mcp.tool_responses import (
     AdditionalSection,
@@ -288,39 +287,76 @@ async def _cold_start(settings: Settings) -> list[DrugLicense]:
 
 
 async def search_drugs(
-    query: str,
+    query: str = "",
     *,
-    search_by: SearchField = "any",
+    name_zh: str = "",
+    name_en: str = "",
+    ingredient: str = "",
+    indication: str = "",
+    applicant: str = "",
+    manufacturer: str = "",
+    form: str = "",
+    drug_class: str = "",
+    country: str = "",
     limit: int = 10,
     settings: Settings | None = None,
 ) -> SearchDrugsResponse:
-    """Search Dataset 37 for drugs matching `query`.
+    """Search Dataset 37 by flat, optional, AND-combined filters.
 
     Dataset 37 = 「未註銷藥品許可證資料集」 — all rows are active by upstream
-    definition, so `status` is always "有效" (kept in output for forward compat).
+    definition. At least one of `query` or a filter must be non-empty.
 
     See `SearchDrugsResponse` for the full response shape.
     """
     s = settings or get_settings()
+    if not any(
+        [query, name_zh, name_en, ingredient, indication, applicant, manufacturer, form,
+         drug_class, country]
+    ):
+        return SearchDrugsResponse(
+            query=query,
+            total_matched=0,
+            returned=0,
+            truncated=False,
+            results=[],
+            error=ErrorInfo(
+                code=RCode.SEARCH_NO_CRITERIA.name,
+                message="Provide at least one of query or a filter parameter.",
+            ),
+        )
+
     licenses = await _load_or_refresh_licenses(s)
     retrieved_at, age_hours, is_stale = _dataset_freshness(s)
-    total, matches = _search(licenses, keyword=query, search_by=search_by, limit=limit)
+    total, groups = _search(
+        licenses,
+        query=query,
+        name_zh=name_zh,
+        name_en=name_en,
+        ingredient=ingredient,
+        indication=indication,
+        applicant=applicant,
+        manufacturer=manufacturer,
+        form=form,
+        drug_class=drug_class,
+        country=country,
+        limit=limit,
+    )
     results = [
         DrugLicenseRow(
-            license_no=r.license_no,
-            name_zh=r.name_zh,
-            name_en=r.name_en,
-            ingredient=r.ingredient,
-            form=r.form,
-            manufacturer=r.manufacturer,
-            applicant=r.applicant,
-            drug_class=r.drug_class,
+            license_no=g.license.license_no,
+            name_zh=g.license.name_zh,
+            name_en=g.license.name_en,
+            ingredient=g.license.ingredient,
+            form=g.license.form,
+            manufacturers=g.manufacturers,
+            applicant=g.license.applicant,
+            drug_class=g.license.drug_class,
+            country=g.license.country,
         )
-        for r in matches
+        for g in groups
     ]
     return SearchDrugsResponse(
         query=query,
-        search_by=search_by,
         total_matched=total,
         returned=len(results),
         truncated=total > len(results),

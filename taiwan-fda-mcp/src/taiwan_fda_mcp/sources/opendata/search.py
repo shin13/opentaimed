@@ -1,21 +1,12 @@
 # path: src/taiwan_fda_mcp/sources/opendata/search.py
-# brief: Substring search across DrugLicense fields with authority-aware ranking.
+# brief: Flat multi-field AND search over Dataset 37 with license-row collapse.
 
-from typing import Literal
+from dataclasses import dataclass
 
 from taiwan_fda_mcp.models import DrugLicense
 
-SearchField = Literal["any", "name_zh", "name_en", "ingredient", "license_no"]
-
-# License-prefix authority for tie-breaking when multiple licenses share an ingredient.
+# License-prefix authority for tie-breaking when many licenses share an ingredient.
 # Lower rank = higher authority (more likely the canonical brand reference).
-#
-# Reasoning:
-#   - Import licenses (含「輸」字) are typically held by the original brand owner
-#     (e.g. Norvasc, Lipitor) — treat as most authoritative.
-#   - 罕藥製 = locally-manufactured rare drug, specialised → high authority.
-#   - 藥製 = locally-manufactured generic → lower authority.
-#   - 內衛 = legacy prefix → lowest.
 _PREFIX_AUTHORITY: dict[str, int] = {
     "衛署藥輸": 0,
     "衛部藥輸": 0,
@@ -27,65 +18,117 @@ _PREFIX_AUTHORITY: dict[str, int] = {
 }
 
 
-def _authority_rank(license_no: str) -> int:
-    """Map a license_no like '衛署藥輸字第021571號' to its authority rank.
+@dataclass
+class LicenseGroup:
+    """One distinct license_no after collapsing duplicate-manufacturer rows."""
 
-    Unknown prefixes get the worst rank (99) so they sort last.
-    """
+    license: DrugLicense  # representative row (first seen for this license_no)
+    manufacturers: list[str]  # all distinct, non-empty manufacturers for this license
+
+
+def _authority_rank(license_no: str) -> int:
+    """Map a license_no to its authority rank; unknown prefixes sort last (99)."""
     for prefix, rank in _PREFIX_AUTHORITY.items():
         if license_no.startswith(prefix):
             return rank
     return 99
 
 
+def _collapse(licenses: list[DrugLicense]) -> list[LicenseGroup]:
+    """Group rows by license_no, preserving first-seen order and merging manufacturers."""
+    groups: dict[str, LicenseGroup] = {}
+    for row in licenses:
+        g = groups.get(row.license_no)
+        if g is None:
+            groups[row.license_no] = LicenseGroup(
+                license=row,
+                manufacturers=[row.manufacturer] if row.manufacturer else [],
+            )
+        elif row.manufacturer and row.manufacturer not in g.manufacturers:
+            g.manufacturers.append(row.manufacturer)
+    return list(groups.values())
+
+
+def _matches(
+    group: LicenseGroup,
+    *,
+    query: str,
+    substr_filters: dict[str, str],
+    manufacturer: str,
+    country: str,
+) -> bool:
+    lic = group.license
+    if query:
+        hay = " ".join([lic.name_zh, lic.name_en, lic.ingredient, lic.license_no]).lower()
+        if query.lower() not in hay:
+            return False
+    for field_name, needle in substr_filters.items():
+        if not needle:
+            continue
+        value = getattr(lic, field_name) or ""  # drug_class may be None
+        if needle.lower() not in value.lower():
+            return False
+    if manufacturer and not any(
+        manufacturer.lower() in m.lower() for m in group.manufacturers
+    ):
+        return False
+    if country:
+        return country.lower() == (lic.country or "").lower()
+    return True
+
+
 def search_drugs(
     licenses: list[DrugLicense],
-    keyword: str,
     *,
-    search_by: SearchField = "any",
-    limit: int = 50,
-) -> tuple[int, list[DrugLicense]]:
-    """Return matches as (total_matched, truncated_sorted_list).
+    query: str = "",
+    name_zh: str = "",
+    name_en: str = "",
+    ingredient: str = "",
+    indication: str = "",
+    applicant: str = "",
+    manufacturer: str = "",
+    form: str = "",
+    drug_class: str = "",
+    country: str = "",
+    limit: int = 10,
+) -> tuple[int, list[LicenseGroup]]:
+    """Filter Dataset 37 by flat AND-combined criteria; collapse rows by license_no.
 
-    Dataset 37 is the 「未註銷藥品許可證資料集」 — cancelled rows do not exist
-    in upstream data, so this function does not filter on cancel_status.
-
-    Sort order: (authority_rank ASC, name_zh ASC). This surfaces the most likely
-    brand-reference license first when many generics share an ingredient.
-
-    Args:
-        licenses: full Dataset 37 list.
-        keyword: search term (whitespace-stripped, lowercased internally).
-        search_by: which field(s) to search. "any" = name_zh + name_en + ingredient + license_no.
-        limit: maximum results returned (callers know the full count via the tuple's first item).
+    Free-text fields (query + name/ingredient/indication/applicant/manufacturer/
+    form/drug_class) match by case-insensitive substring; `country` matches by
+    case-insensitive exact. `query` is OR-across name_zh+name_en+ingredient+license_no.
+    Collapsing happens before truncation, so `total` is the distinct-license count
+    and `limit` truncates licenses, not raw rows.
 
     Returns:
-        (total_matched, results) — total is the un-truncated match count;
-        results is the sorted, truncated list.
+        (total_matched, results) — total is the un-truncated distinct-license
+        match count; results is authority-sorted and truncated to `limit`.
     """
-    keyword = keyword.strip().lower()
-    if not keyword:
+    substr_filters = {
+        "name_zh": name_zh.strip(),
+        "name_en": name_en.strip(),
+        "ingredient": ingredient.strip(),
+        "indication": indication.strip(),
+        "applicant": applicant.strip(),
+        "form": form.strip(),
+        "drug_class": drug_class.strip(),
+    }
+    query = query.strip()
+    manufacturer = manufacturer.strip()
+    country = country.strip()
+    if not query and not country and not manufacturer and not any(substr_filters.values()):
         return 0, []
 
-    matches: list[DrugLicense] = []
-    for row in licenses:
-        haystack = _haystack(row, search_by).lower()
-        if keyword in haystack:
-            matches.append(row)
-
-    matches.sort(key=lambda r: (_authority_rank(r.license_no), r.name_zh))
+    matches = [
+        g
+        for g in _collapse(licenses)
+        if _matches(
+            g,
+            query=query,
+            substr_filters=substr_filters,
+            manufacturer=manufacturer,
+            country=country,
+        )
+    ]
+    matches.sort(key=lambda g: (_authority_rank(g.license.license_no), g.license.name_zh))
     return len(matches), matches[:limit]
-
-
-def _haystack(row: DrugLicense, search_by: SearchField) -> str:
-    if search_by == "any":
-        return " ".join([row.name_zh, row.name_en, row.ingredient, row.license_no])
-    if search_by == "name_zh":
-        return row.name_zh
-    if search_by == "name_en":
-        return row.name_en
-    if search_by == "ingredient":
-        return row.ingredient
-    if search_by == "license_no":
-        return row.license_no
-    return ""

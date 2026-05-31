@@ -23,7 +23,6 @@ from taiwan_fda_mcp.tools import (
     search_drugs as _search_drugs,
 )
 
-SearchByLiteral = Literal["any", "name_zh", "name_en", "ingredient", "license_no"]
 FieldGroupLiteral = Literal["all", "key_fields"]
 ResponseFormatLiteral = Literal["concise", "key", "detailed", "full"]
 
@@ -102,25 +101,56 @@ mcp: FastMCP = FastMCP(
 
 @mcp.tool
 async def search_drugs(
-    query: str,
-    search_by: SearchByLiteral = "any",
+    query: str = "",
+    name_zh: str = "",
+    name_en: str = "",
+    ingredient: str = "",
+    indication: str = "",
+    applicant: str = "",
+    manufacturer: str = "",
+    form: str = "",
+    drug_class: str = "",
+    country: str = "",
     limit: int = 10,
 ) -> SearchDrugsResponse:
-    """Search Taiwan FDA drug licenses by Chinese / English name, active ingredient, or license number.
+    """Search Taiwan FDA drug licenses by any combination of fields (AND-combined).
+
+    All parameters are optional; provide at least one. Free-text fields match by
+    case-insensitive substring; `country` matches by case-insensitive exact code.
 
     Args:
-        query: keyword to search (e.g. "脈優", "atorvastatin", "021571").
-        search_by: which field to search. "any" (default) searches name + ingredient + license.
+        query: fuzzy keyword across Chinese/English name + ingredient + license_no
+            (e.g. "脈優", "atorvastatin", "021571").
+        name_zh: 中文品名 substring (e.g. "脈優").
+        name_en: 英文品名 substring (e.g. "norvasc").
+        ingredient: 主成分 substring (e.g. "amlodipine").
+        indication: 適應症 substring (e.g. "高血壓").
+        applicant: 申請商 substring.
+        manufacturer: 製造商 substring (matches if ANY manufacturer of a license matches).
+        form: 劑型 substring (e.g. "錠劑").
+        drug_class: 藥品類別 substring.
+        country: 製造廠國別 — EXACT, case-insensitive (e.g. "TW").
         limit: maximum results (default 10).
 
     Returns:
-        Dict with `total_matched` (full match count), `returned` (rows in `results`),
-        `truncated` (bool), `results` (list of license rows), and `error: null`.
-        Results sorted by license-prefix authority (import/原廠 first) then name_zh,
-        so the most likely canonical reference surfaces at index 0 when many
-        generics share an ingredient.
+        SearchDrugsResponse — `total_matched` (full distinct-license count),
+        `returned`, `truncated`, `results` (license rows with a `manufacturers`
+        list), dataset freshness fields, and `error` (set when no criteria given).
+        Results sorted by license-prefix authority (import/原廠 first) then name_zh.
     """
-    return await _search_drugs(query=query, search_by=search_by, limit=limit)
+    return await _search_drugs(
+        query=query,
+        name_zh=name_zh,
+        name_en=name_en,
+        ingredient=ingredient,
+        indication=indication,
+        applicant=applicant,
+        manufacturer=manufacturer,
+        form=form,
+        drug_class=drug_class,
+        country=country,
+        limit=limit,
+    )
 
 
 @mcp.tool
