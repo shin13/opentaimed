@@ -31,8 +31,12 @@
 !*.public.key
 secrets/
 
-# Claude Code local config
-.claude/
+# Claude Code config — local/per-machine settings stay private, but the
+# shared team settings file is tracked so repo conventions (e.g. AI-attribution
+# trailer policy) apply to every contributor. Git cannot re-include a file under
+# a fully-excluded dir, so exclude contents with /* then whitelist the one file.
+.claude/*
+!.claude/settings.json
 
 # Python
 __pycache__/
