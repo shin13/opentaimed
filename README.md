@@ -44,7 +44,7 @@ Currently `taiwan-fda-mcp` is the only shipped subproject. Start there.
 git clone https://github.com/shin13/opentaimed.git
 cd opentaimed/taiwan-fda-mcp
 uv sync
-uv run pytest               # 73 unit tests, no network
+uv run pytest               # unit tests, no network
 uv run taiwan-fda-mcp-server  # stdio MCP server
 ```
 
