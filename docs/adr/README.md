@@ -33,3 +33,4 @@ session-state notes kept in `.private/`.
 | [0005](./0005-private-nested-repo-pattern.md) | `.private/` as a nested independent git repository | Accepted |
 | [0006](./0006-flat-response-schema-alignment-with-healthcare-mcp-norms.md) | Flat response schema for `get_package_insert`, aligned with healthcare MCP norms | Accepted |
 | [0007](./0007-rx-otc-dual-format-full-fidelity.md) | Rx/OTC dual-format support with full-fidelity insert return | Accepted |
+| [0008](./0008-multi-field-search-flat-filters.md) | Multi-field `search_drugs` via opendata, with flat AND filters | Accepted |
