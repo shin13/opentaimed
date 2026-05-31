@@ -75,3 +75,13 @@ def cache_is_fresh(cache_dir: Path, ttl_hours: int) -> bool:
         return False
     age_seconds = time.time() - path.stat().st_mtime
     return age_seconds < ttl_hours * 3600
+
+
+def cache_mtime(cache_dir: Path) -> float | None:
+    """Epoch mtime of the cache file, or None if absent.
+
+    Used by the SWR loader to compute the real age of a disk cache at cold
+    start (so a server restart picks up a genuinely-stale on-disk cache).
+    """
+    path = cache_dir / _CACHE_FILE
+    return path.stat().st_mtime if path.exists() else None

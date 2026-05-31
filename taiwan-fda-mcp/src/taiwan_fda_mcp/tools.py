@@ -1,8 +1,10 @@
 # path: src/taiwan_fda_mcp/tools.py
 # brief: Pure-Python tool entry points — wrap Layer 1 into MCP-friendly responses.
 
+import asyncio
 import difflib
 import logging
+import time
 from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
@@ -10,6 +12,7 @@ from urllib.parse import quote
 
 from taiwan_fda_mcp.config import Settings, get_settings
 from taiwan_fda_mcp.exceptions import (
+    DatasetFetchError,
     InsertFetchError,
     InsertParseError,
     InvalidLicenseError,
@@ -22,7 +25,7 @@ from taiwan_fda_mcp.sources.insert.html_text import html_to_text
 from taiwan_fda_mcp.sources.license_code import license_str_to_code
 from taiwan_fda_mcp.sources.opendata.client import fetch_dataset37
 from taiwan_fda_mcp.sources.opendata.dataset37 import (
-    cache_is_fresh,
+    cache_mtime,
     load_from_cache,
     write_to_cache,
 )
@@ -48,9 +51,13 @@ from taiwan_fda_mcp.tool_responses import (
 
 _logger = logging.getLogger(__name__)
 
-# Process-level memo for Dataset 37 — stdio MCP server is long-running;
-# avoid re-parsing 26K rows on every tool call. Restart server to refresh.
+# Process-level memo for Dataset 37 — the stdio MCP server is long-running, so
+# we avoid re-parsing 26K rows on every tool call. TTL-aware stale-while-revalidate
+# (ADR-0009): once warm, a stale memo is served immediately while a single
+# background task refreshes it, so a tool call never blocks on the download.
 _LICENSES_CACHE: list[DrugLicense] | None = None
+_LICENSES_LOADED_AT: float | None = None
+_REFRESH_TASK: "asyncio.Task[None] | None" = None
 
 
 # Independent project disclaimer — surfaced in every get_package_insert response
@@ -209,26 +216,58 @@ _OTC_CATEGORIES: frozenset[str] = frozenset(
 
 
 async def _load_or_refresh_licenses(settings: Settings) -> list[DrugLicense]:
-    """Load Dataset 37 with a process-level memo.
+    """Return Dataset 37 rows, refreshing in the background when stale (SWR).
 
-    On first call: load from disk cache (if fresh) or download from FDA. Memoise.
-    Subsequent calls: return memo. Restart server to pick up cache changes.
+    Cold start blocks once (disk cache, else a single download). After that a
+    stale memo is served immediately while a single background task refreshes
+    it — queries never block on the network mid-agent-turn. Implements ADR-0009.
     """
-    global _LICENSES_CACHE
-    if _LICENSES_CACHE is not None:
-        return _LICENSES_CACHE
+    if _LICENSES_CACHE is None:
+        return await _cold_start(settings)
 
-    cache_dir = settings.DATASET37_CACHE_DIR
-    if cache_is_fresh(cache_dir, ttl_hours=settings.DATASET37_TTL_HOURS):
-        loaded = load_from_cache(cache_dir)
-        if loaded:
-            _LICENSES_CACHE = loaded
-            return loaded
+    ttl_seconds = settings.DATASET37_TTL_HOURS * 3600
+    if _LICENSES_LOADED_AT is None or (time.time() - _LICENSES_LOADED_AT) >= ttl_seconds:
+        _trigger_background_refresh(settings)  # serve stale now; refresh in background
+    return _LICENSES_CACHE
 
-    rows = await fetch_dataset37(settings.FDA_OPENDATA_BASE_URL)
-    write_to_cache(rows, cache_dir)
-    _LICENSES_CACHE = rows
-    return rows
+
+async def _refresh_into_memo(settings: Settings) -> None:
+    """Fetch Dataset 37 and replace the memo + disk cache; keep stale on failure."""
+    global _LICENSES_CACHE, _LICENSES_LOADED_AT
+    try:
+        rows = await fetch_dataset37(settings.FDA_OPENDATA_BASE_URL)
+    except DatasetFetchError:
+        _logger.warning("dataset37.refresh.failed")  # keep stale memo; retry next call
+        return
+    write_to_cache(rows, settings.DATASET37_CACHE_DIR)
+    _LICENSES_CACHE, _LICENSES_LOADED_AT = rows, time.time()
+    _logger.info("dataset37.refresh.done", extra={"count": len(rows)})
+
+
+def _trigger_background_refresh(settings: Settings) -> None:
+    """Schedule a single background refresh; no-op if one is already in flight."""
+    global _REFRESH_TASK
+    if _REFRESH_TASK is not None and not _REFRESH_TASK.done():
+        return  # single in-flight guard
+    _REFRESH_TASK = asyncio.create_task(_refresh_into_memo(settings))
+
+
+async def _cold_start(settings: Settings) -> list[DrugLicense]:
+    """First load this process: serve disk cache (refresh if stale) else download once."""
+    global _LICENSES_CACHE, _LICENSES_LOADED_AT
+    disk = load_from_cache(settings.DATASET37_CACHE_DIR)  # None if absent
+    if disk is not None:
+        _LICENSES_CACHE = disk
+        _LICENSES_LOADED_AT = cache_mtime(settings.DATASET37_CACHE_DIR)  # real on-disk age
+        ttl_seconds = settings.DATASET37_TTL_HOURS * 3600
+        if _LICENSES_LOADED_AT is None or (time.time() - _LICENSES_LOADED_AT) >= ttl_seconds:
+            _trigger_background_refresh(settings)  # stale disk → serve + refresh, no block
+        return disk
+
+    await _refresh_into_memo(settings)  # truly first run → block once
+    if _LICENSES_CACHE is None:
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "Dataset 37 unavailable on first run")
+    return _LICENSES_CACHE
 
 
 async def search_drugs(
