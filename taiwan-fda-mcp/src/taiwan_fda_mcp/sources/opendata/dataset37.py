@@ -20,6 +20,7 @@ _FIELD_MAP: dict[str, str] = {
     "ingredient": "主成分略述",
     "applicant": "申請商名稱",
     "manufacturer": "製造商名稱",
+    "country": "製造廠國別",
     "drug_class": "藥品類別",
     "cancel_status": "註銷狀態",
     "valid_until": "有效日期",

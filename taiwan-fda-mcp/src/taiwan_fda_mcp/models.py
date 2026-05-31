@@ -17,6 +17,7 @@ class DrugLicense(BaseModel):
     ingredient: str = Field(default="", description="主成分略述")
     applicant: str = Field(default="", description="申請商名稱")
     manufacturer: str = Field(default="", description="製造商名稱")
+    country: str = Field(default="", description="製造廠國別 (manufacturing-site country)")
     drug_class: str | None = Field(default=None, description="藥品類別")
     cancel_status: str = Field(default="", description="註銷狀態 (空字串表有效)")
     valid_until: str = Field(default="", description="有效日期 YYYY/MM/DD")
