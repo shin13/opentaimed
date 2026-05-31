@@ -73,10 +73,14 @@ def _matches(
     ):
         return False
     if country:
-        # Compared against the representative (first-seen) row only. Manufacturers
-        # are merged across collapsed rows, but country is not — a license whose
-        # sites span multiple countries is filtered/shown by its first row's
-        # country. Acceptable for P1; revisit if multi-country licenses matter.
+        # KNOWN LIMITATION: one license can appear as several rows (one per
+        # manufacturing site), and those rows can have different countries. When we
+        # collapse them we keep only the FIRST row's country (`lic.country`), so:
+        #   - a `country="US"` filter misses a license whose first row is "TW"
+        #     even if a later row is "US";
+        #   - the result shows only that first country.
+        # (Manufacturer names, by contrast, ARE collected into a full list.)
+        # Accepted for P1; revisit only if multi-country licenses prove to matter.
         return country.lower() == (lic.country or "").lower()
     return True
 
