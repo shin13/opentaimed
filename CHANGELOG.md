@@ -50,8 +50,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   every PR, and a weekly scheduled baseline run against full history.
 - `.pre-commit-config.yaml` wiring gitleaks as a local pre-commit hook
   for any contributor who runs `pre-commit install`.
+- **Distribution & freshness foundation** (ADR-0009; pre-launch Phase 0):
+  - Dataset 37 search index now refreshes via **stale-while-revalidate** —
+    once warm, a query is served from the cached index immediately while a
+    single background task refreshes it, so no tool call blocks on the
+    download. Fixes a dead-TTL bug where a long-running server never
+    refreshed the index within its TTL.
+  - Search index cache moved to the **per-user OS cache dir**
+    (`platformdirs`) instead of a working-directory-relative path, so
+    ephemeral `uvx` installs keep a durable cache.
+  - `search_drugs` responses carry explicit freshness:
+    `dataset_retrieved_at`, `dataset_age_hours`, and `is_stale`.
+  - Background refresh of Dataset 37 honours
+    `FDA_RATE_LIMIT_INTERVAL_SECONDS` — a good-citizen throttle so refreshes
+    never hammer `data.fda.gov.tw`.
+- Tracked `.claude/settings.json` (`includeCoAuthoredBy: false`) so the
+  AI-attribution policy applies to every contributor.
 
 ### Changed
+- `taiwan-fda-mcp/.env.example` rewritten to match `config.py`: every var
+  documented with its default, the cache-dir override commented out (an
+  active cwd-relative value would defeat the per-user default), and reserved
+  `MCP_TRANSPORT` / `MCP_HTTP_HOST` / `MCP_HTTP_PORT` placeholders added for
+  the planned HTTP-service profile.
+- AI-assistance disclosure now uses an `Assisted-By:` commit trailer instead
+  of `Co-Authored-By:` — keeps disclosure without inflating GitHub's
+  contributor graph (documented in `CLAUDE.md`).
 - `taiwan-fda-mcp/README.md` now leads with a non-official-wrapper
   disclaimer banner.
 - `taiwan-fda-mcp/pyproject.toml` metadata filled in for public
