@@ -1,30 +1,61 @@
 {
   "additionalProperties": false,
   "properties": {
+    "applicant": {
+      "default": "",
+      "description": "申請商 substring.",
+      "type": "string"
+    },
+    "country": {
+      "default": "",
+      "description": "製造廠國別 — EXACT, case-insensitive (e.g. \"TW\").",
+      "type": "string"
+    },
+    "drug_class": {
+      "default": "",
+      "description": "藥品類別 substring.",
+      "type": "string"
+    },
+    "form": {
+      "default": "",
+      "description": "劑型 substring (e.g. \"錠劑\").",
+      "type": "string"
+    },
+    "indication": {
+      "default": "",
+      "description": "適應症 substring (e.g. \"高血壓\").",
+      "type": "string"
+    },
+    "ingredient": {
+      "default": "",
+      "description": "主成分 substring (e.g. \"amlodipine\").",
+      "type": "string"
+    },
     "limit": {
       "default": 10,
       "description": "maximum results (default 10).",
       "type": "integer"
     },
-    "query": {
-      "description": "keyword to search (e.g. \"脈優\", \"atorvastatin\", \"021571\").",
+    "manufacturer": {
+      "default": "",
+      "description": "製造商 substring (matches if ANY manufacturer of a license matches).",
       "type": "string"
     },
-    "search_by": {
-      "default": "any",
-      "description": "which field to search. \"any\" (default) searches name + ingredient + license.",
-      "enum": [
-        "any",
-        "name_zh",
-        "name_en",
-        "ingredient",
-        "license_no"
-      ],
+    "name_en": {
+      "default": "",
+      "description": "英文品名 substring (e.g. \"norvasc\").",
+      "type": "string"
+    },
+    "name_zh": {
+      "default": "",
+      "description": "中文品名 substring (e.g. \"脈優\").",
+      "type": "string"
+    },
+    "query": {
+      "default": "",
+      "description": "fuzzy keyword across Chinese/English name + ingredient + license_no\n(e.g. \"脈優\", \"atorvastatin\", \"021571\").",
       "type": "string"
     }
   },
-  "required": [
-    "query"
-  ],
   "type": "object"
 }

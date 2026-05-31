@@ -58,7 +58,7 @@
       "type": "boolean"
     },
     "query": {
-      "description": "Echo of the search keyword the caller passed.",
+      "description": "Echo of the fuzzy query the caller passed (may be empty).",
       "type": "string"
     },
     "results": {
@@ -68,6 +68,11 @@
         "properties": {
           "applicant": {
             "description": "申請商.",
+            "type": "string"
+          },
+          "country": {
+            "default": "",
+            "description": "製造廠國別 (manufacturing-site country).",
             "type": "string"
           },
           "drug_class": {
@@ -94,9 +99,12 @@
             "description": "許可證字號 (e.g. 衛署藥輸字第021571號).",
             "type": "string"
           },
-          "manufacturer": {
-            "description": "製造商.",
-            "type": "string"
+          "manufacturers": {
+            "description": "All registered 製造商 for this license (collapsed from duplicate rows).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "name_en": {
             "description": "英文品名.",
@@ -118,7 +126,6 @@
           "name_en",
           "ingredient",
           "form",
-          "manufacturer",
           "applicant"
         ],
         "type": "object"
@@ -129,12 +136,8 @@
       "description": "Number of rows actually in `results`.",
       "type": "integer"
     },
-    "search_by": {
-      "description": "Echo of search_by (any | name_zh | name_en | ingredient | license_no).",
-      "type": "string"
-    },
     "total_matched": {
-      "description": "Total rows matching the keyword BEFORE limit truncation.",
+      "description": "Total distinct licenses matching BEFORE limit truncation.",
       "type": "integer"
     },
     "truncated": {
@@ -144,7 +147,6 @@
   },
   "required": [
     "query",
-    "search_by",
     "total_matched",
     "returned",
     "truncated"

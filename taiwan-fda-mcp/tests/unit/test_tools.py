@@ -58,7 +58,6 @@ def seeded_settings(tmp_path: Path, fixtures_dir: Path) -> Settings:
 async def test_search_drugs_returns_envelope_with_total(seeded_settings):
     response = (await search_drugs(query="脈優", settings=seeded_settings)).model_dump()
     assert response["query"] == "脈優"
-    assert response["search_by"] == "any"
     assert response["error"] is None
     assert response["total_matched"] == 1
     assert response["returned"] == 1
@@ -66,6 +65,9 @@ async def test_search_drugs_returns_envelope_with_total(seeded_settings):
     row = response["results"][0]
     assert row["license_no"] == "衛署藥輸字第021571號"
     assert row["name_zh"] == "脈優錠５毫克"
+    assert row["manufacturers"] == ["久裕企業股份有限公司"]
+    assert "manufacturer" not in row
+    assert row["country"] == "IT"
 
 
 @pytest.mark.asyncio
@@ -848,3 +850,19 @@ async def test_search_response_is_stale_when_serving_stale(monkeypatch, tmp_path
     assert resp.dataset_age_hours > 0
     if _tools_mod._REFRESH_TASK is not None:  # drain the scheduled background refresh
         await _tools_mod._REFRESH_TASK
+
+
+@pytest.mark.asyncio
+async def test_search_no_criteria_returns_error(seeded_settings):
+    """No criteria → explicit SEARCH_NO_CRITERIA error, not a silent empty success."""
+    resp = (await search_drugs(settings=seeded_settings)).model_dump()
+    assert resp["error"]["code"] == "SEARCH_NO_CRITERIA"
+    assert resp["total_matched"] == 0
+
+
+@pytest.mark.asyncio
+async def test_search_whitespace_only_is_no_criteria_error(seeded_settings):
+    """Whitespace-only input is treated the same as no input (guard strips first)."""
+    resp = (await search_drugs(query="   ", name_zh="  ", settings=seeded_settings)).model_dump()
+    assert resp["error"]["code"] == "SEARCH_NO_CRITERIA"
+    assert resp["total_matched"] == 0

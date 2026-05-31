@@ -112,3 +112,11 @@ async def test_fetch_dataset37_applies_rate_limit(fixtures_dir, monkeypatch):
         await fetch_dataset37("https://data.fda.gov.tw", rate_limit_interval=0.5)
 
     assert 0.5 in slept  # noqa: PLR2004
+
+
+def test_parse_rows_maps_country(fixtures_dir):
+    raw = json.loads((fixtures_dir / "dataset37_sample.json").read_text(encoding="utf-8"))
+    rows = parse_rows(raw)
+    by_license = {r.license_no: r for r in rows}
+    assert by_license["衛署藥輸字第021571號"].country == "IT"
+    assert by_license["衛署藥製字第040065號"].country == "TW"

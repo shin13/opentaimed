@@ -41,21 +41,22 @@ class DrugLicenseRow(BaseModel):
     name_en: str = Field(description="英文品名.")
     ingredient: str = Field(description="主成分略述.")
     form: str = Field(description="劑型.")
-    manufacturer: str = Field(description="製造商.")
+    manufacturers: list[str] = Field(
+        default_factory=list,
+        description="All registered 製造商 for this license (collapsed from duplicate rows).",
+    )
     applicant: str = Field(description="申請商.")
     drug_class: str | None = Field(default=None, description="藥品類別 (may be null).")
+    country: str = Field(default="", description="製造廠國別 (manufacturing-site country).")
     status: str = Field(default="有效", description="Dataset 37 = 未註銷, so always 有效 in MVP.")
 
 
 class SearchDrugsResponse(BaseModel):
     """Response shape for `search_drugs`."""
 
-    query: str = Field(description="Echo of the search keyword the caller passed.")
-    search_by: str = Field(
-        description="Echo of search_by (any | name_zh | name_en | ingredient | license_no)."
-    )
+    query: str = Field(description="Echo of the fuzzy query the caller passed (may be empty).")
     total_matched: int = Field(
-        description="Total rows matching the keyword BEFORE limit truncation."
+        description="Total distinct licenses matching BEFORE limit truncation."
     )
     returned: int = Field(description="Number of rows actually in `results`.")
     truncated: bool = Field(
