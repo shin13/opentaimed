@@ -66,6 +66,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
     never hammer `data.fda.gov.tw`.
 - Tracked `.claude/settings.json` (`includeCoAuthoredBy: false`) so the
   AI-attribution policy applies to every contributor.
+- **Flat multi-field `search_drugs`** (ADR-0008): optional, AND-combined
+  per-field filters (`name_zh` / `name_en` / `ingredient` / `indication` /
+  `applicant` / `manufacturer` / `form` / `drug_class` / `country`) alongside the
+  fuzzy `query`. Free-text fields match by case-insensitive substring;
+  `country` by case-insensitive exact. `DrugLicense` gains `country` (from
+  `製造廠國別`).
+- Duplicate-manufacturer license rows are now **collapsed** into one result
+  with a `manufacturers: list[str]` — resolves the known duplicate-row issue.
 
 ### Changed
 - `taiwan-fda-mcp/.env.example` rewritten to match `config.py`: every var
@@ -76,6 +84,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - AI-assistance disclosure now uses an `Assisted-By:` commit trailer instead
   of `Co-Authored-By:` — keeps disclosure without inflating GitHub's
   contributor graph (documented in `CLAUDE.md`).
+- **Breaking (input schema):** `search_drugs` `search_by` parameter removed —
+  fully subsumed by the flat filter params. `SearchDrugsResponse` drops its
+  `search_by` echo; `DrugLicenseRow.manufacturer` (string) becomes
+  `manufacturers` (list) and gains `country`.
 - `taiwan-fda-mcp/README.md` now leads with a non-official-wrapper
   disclaimer banner.
 - `taiwan-fda-mcp/pyproject.toml` metadata filled in for public
