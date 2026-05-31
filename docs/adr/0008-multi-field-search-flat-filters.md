@@ -90,7 +90,7 @@ This ADR covers **P1**: dimensions served by Dataset 37 alone (no new network
 source). ATC (`s_atc`, Dataset 41) is **P2**, a later additive `atc` param.
 Revoked-drug search (`s_revoke`, Dataset 36) stays v1 Out-of-Scope. The bulk
 data-freshness mechanism that all of this rides on is a separate decision
-(ADR-0009 — landing in a follow-up PR).
+([ADR-0009](./0009-distributed-install-data-freshness.md)).
 
 ## Consequences
 
