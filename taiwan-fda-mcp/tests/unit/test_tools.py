@@ -816,3 +816,35 @@ async def test_cold_start_stale_disk_serves_then_refreshes(monkeypatch, tmp_path
     assert _tools_mod._REFRESH_TASK is not None  # stale disk → refresh scheduled
     await _tools_mod._REFRESH_TASK
     assert fetched["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_search_response_carries_freshness(seeded_settings):
+    """search_drugs surfaces explicit dataset freshness so the LLM can judge staleness."""
+    resp = await search_drugs(query="脈優", settings=seeded_settings)
+    assert resp.dataset_retrieved_at is not None
+    datetime.fromisoformat(resp.dataset_retrieved_at)  # valid ISO 8601
+    assert isinstance(resp.dataset_age_hours, float)
+    assert resp.dataset_age_hours >= 0
+    assert resp.is_stale is False  # freshly seeded cache is within TTL
+
+
+@pytest.mark.asyncio
+async def test_search_response_is_stale_when_serving_stale(monkeypatch, tmp_path):
+    """When the served index is past TTL (refresh pending/failed), is_stale is True."""
+
+    async def boom(base_url):
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", boom)
+    s = make_settings(cache_dir=tmp_path, ttl_hours=0)  # any age reads as stale
+    _tools_mod._LICENSES_CACHE = []
+    _tools_mod._LICENSES_LOADED_AT = 0.0
+
+    resp = await search_drugs(query="脈優", settings=s)
+
+    assert resp.is_stale is True
+    assert resp.dataset_age_hours is not None
+    assert resp.dataset_age_hours > 0
+    if _tools_mod._REFRESH_TASK is not None:  # drain the scheduled background refresh
+        await _tools_mod._REFRESH_TASK

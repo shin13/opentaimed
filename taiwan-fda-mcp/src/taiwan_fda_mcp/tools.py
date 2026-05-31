@@ -252,6 +252,20 @@ def _trigger_background_refresh(settings: Settings) -> None:
     _REFRESH_TASK = asyncio.create_task(_refresh_into_memo(settings))
 
 
+def _dataset_freshness(settings: Settings) -> tuple[str | None, float | None, bool]:
+    """Derive (retrieved_at ISO, age_hours, is_stale) for the currently-served memo.
+
+    Read after `_load_or_refresh_licenses` so `_LICENSES_LOADED_AT` reflects the
+    age of the data actually returned (SWR serves stale before a refresh lands).
+    """
+    if _LICENSES_LOADED_AT is None:
+        return None, None, False
+    age_hours = (time.time() - _LICENSES_LOADED_AT) / 3600
+    retrieved_at = datetime.fromtimestamp(_LICENSES_LOADED_AT, UTC).isoformat()
+    is_stale = age_hours >= settings.DATASET37_TTL_HOURS
+    return retrieved_at, age_hours, is_stale
+
+
 async def _cold_start(settings: Settings) -> list[DrugLicense]:
     """First load this process: serve disk cache (refresh if stale) else download once."""
     global _LICENSES_CACHE, _LICENSES_LOADED_AT
@@ -286,6 +300,7 @@ async def search_drugs(
     """
     s = settings or get_settings()
     licenses = await _load_or_refresh_licenses(s)
+    retrieved_at, age_hours, is_stale = _dataset_freshness(s)
     total, matches = _search(licenses, keyword=query, search_by=search_by, limit=limit)
     results = [
         DrugLicenseRow(
@@ -307,6 +322,9 @@ async def search_drugs(
         returned=len(results),
         truncated=total > len(results),
         results=results,
+        dataset_retrieved_at=retrieved_at,
+        dataset_age_hours=age_hours,
+        is_stale=is_stale,
         error=None,
     )
 

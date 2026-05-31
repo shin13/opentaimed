@@ -1,6 +1,30 @@
 {
   "description": "Response shape for `search_drugs`.",
   "properties": {
+    "dataset_age_hours": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Age of the search index in hours at response time."
+    },
+    "dataset_retrieved_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO 8601 UTC time the search index (Dataset 37) was last loaded."
+    },
     "error": {
       "anyOf": [
         {
@@ -27,6 +51,11 @@
       ],
       "default": null,
       "description": "Null on success."
+    },
+    "is_stale": {
+      "default": false,
+      "description": "True if the search index is older than its TTL (a background refresh is in flight or last failed); results are still served from cache.",
+      "type": "boolean"
     },
     "query": {
       "description": "Echo of the search keyword the caller passed.",
