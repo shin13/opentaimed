@@ -309,9 +309,13 @@ async def search_drugs(
     See `SearchDrugsResponse` for the full response shape.
     """
     s = settings or get_settings()
+    # Strip before the empty-criteria check so whitespace-only input is treated
+    # the same as no input (search.py also strips) — a consistent error, not a
+    # silent empty success.
     if not any(
-        [query, name_zh, name_en, ingredient, indication, applicant, manufacturer, form,
-         drug_class, country]
+        v.strip()
+        for v in (query, name_zh, name_en, ingredient, indication, applicant, manufacturer,
+                  form, drug_class, country)
     ):
         return SearchDrugsResponse(
             query=query,

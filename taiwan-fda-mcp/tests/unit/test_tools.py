@@ -850,3 +850,19 @@ async def test_search_response_is_stale_when_serving_stale(monkeypatch, tmp_path
     assert resp.dataset_age_hours > 0
     if _tools_mod._REFRESH_TASK is not None:  # drain the scheduled background refresh
         await _tools_mod._REFRESH_TASK
+
+
+@pytest.mark.asyncio
+async def test_search_no_criteria_returns_error(seeded_settings):
+    """No criteria → explicit SEARCH_NO_CRITERIA error, not a silent empty success."""
+    resp = (await search_drugs(settings=seeded_settings)).model_dump()
+    assert resp["error"]["code"] == "SEARCH_NO_CRITERIA"
+    assert resp["total_matched"] == 0
+
+
+@pytest.mark.asyncio
+async def test_search_whitespace_only_is_no_criteria_error(seeded_settings):
+    """Whitespace-only input is treated the same as no input (guard strips first)."""
+    resp = (await search_drugs(query="   ", name_zh="  ", settings=seeded_settings)).model_dump()
+    assert resp["error"]["code"] == "SEARCH_NO_CRITERIA"
+    assert resp["total_matched"] == 0

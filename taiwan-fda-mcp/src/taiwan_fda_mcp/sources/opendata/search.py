@@ -73,6 +73,10 @@ def _matches(
     ):
         return False
     if country:
+        # Compared against the representative (first-seen) row only. Manufacturers
+        # are merged across collapsed rows, but country is not — a license whose
+        # sites span multiple countries is filtered/shown by its first row's
+        # country. Acceptable for P1; revisit if multi-country licenses matter.
         return country.lower() == (lic.country or "").lower()
     return True
 
