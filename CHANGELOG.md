@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-01 — first public PyPI release
+
+First release published to PyPI. Bundles all work since the internal
+`0.1.0` cut: full-fidelity Rx/OTC inserts, distribution + cache-freshness
+foundation, flat multi-field search, and the PyPI/uvx packaging.
+
 ### Added
 - **Full-fidelity Rx + OTC insert coverage** in `get_package_insert`
   (ADR-0006 flat schema + ADR-0007 dual-format):
@@ -184,5 +190,5 @@ shipped at the cut.
 - macOS 14+, Claude Desktop (stdio transport)
 - TFDA endpoints `mcp.fda.gov.tw` and `data.fda.gov.tw` as of 2026-05.
 
-[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/shin13/opentaimed/releases/tag/v0.1.0
+[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/shin13/opentaimed/releases/tag/v0.2.0

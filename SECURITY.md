@@ -56,5 +56,5 @@ This project is a research and tooling effort. It is **NOT** a medical device,
 **NOT** a clinical decision support system, and **NOT** endorsed by the Taiwan
 FDA. Any vulnerability that allows the system to produce fabricated clinical
 information (e.g. the LLM hallucinating drug data without calling a tool) is
-treated as a high-severity issue — see e.g. the P0 hallucination fix in
-v0.1.0 of `taiwan-fda-mcp`.
+treated as a high-severity issue — see e.g. the P0 hallucination fix (the
+MANDATORY-RULES server instructions) in `taiwan-fda-mcp`.
