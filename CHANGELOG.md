@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-06-01
+
+### Fixed
+- **`uvx` one-line install now works.** Added a `taiwan-fda-mcp` console
+  script (matching the package name) so `uvx taiwan-fda-mcp` launches the
+  server. The earlier docs showed `uvx taiwan-fda-mcp-server`, which fails:
+  `uvx` resolves a bare command to a package of the same name, and there is
+  no `taiwan-fda-mcp-server` package. The `-server` entry point is kept as a
+  backward-compatible alias. README and all client configs (Claude Code /
+  Claude Desktop / Codex) updated to use `taiwan-fda-mcp`.
+
 ## [0.2.0] — 2026-06-01 — first public PyPI release
 
 First release published to PyPI. Bundles all work since the internal
@@ -190,5 +201,6 @@ shipped at the cut.
 - macOS 14+, Claude Desktop (stdio transport)
 - TFDA endpoints `mcp.fda.gov.tw` and `data.fda.gov.tw` as of 2026-05.
 
-[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/shin13/opentaimed/releases/tag/v0.2.1
 [0.2.0]: https://github.com/shin13/opentaimed/releases/tag/v0.2.0

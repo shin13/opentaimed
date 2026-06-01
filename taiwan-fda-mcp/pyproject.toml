@@ -1,6 +1,6 @@
 [project]
 name = "taiwan-fda-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "MCP server exposing Taiwan FDA (TFDA) drug-license and package-insert data to LLM clients. Independent open-source wrapper; not a TFDA product."
 readme = "README.md"
 authors = [
@@ -38,6 +38,10 @@ Issues = "https://github.com/shin13/opentaimed/issues"
 Changelog = "https://github.com/shin13/opentaimed/blob/main/CHANGELOG.md"
 
 [project.scripts]
+# Primary command matches the package name so `uvx taiwan-fda-mcp` works
+# (uvx resolves a command to the package of the same name). The -server
+# alias is kept for backward compatibility.
+taiwan-fda-mcp = "taiwan_fda_mcp.mcp_server:main"
 taiwan-fda-mcp-server = "taiwan_fda_mcp.mcp_server:main"
 
 [build-system]

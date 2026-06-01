@@ -1,30 +1,32 @@
 # path: tests/unit/test_packaging.py
-# brief: Guard the published console-script entry point so `uvx`/`pip` installs
+# brief: Guard the published console-script entry points so `uvx`/`pip` installs
 #        keep launching the server; a renamed main() or dropped script regresses.
 
 from importlib.metadata import entry_points
 
-CONSOLE_SCRIPT = "taiwan-fda-mcp-server"
+import pytest
+
+# `taiwan-fda-mcp` matches the package name so `uvx taiwan-fda-mcp` works
+# (uvx resolves a bare command to the package of the same name); `-server`
+# is the backward-compatible alias.
+CONSOLE_SCRIPTS = ("taiwan-fda-mcp", "taiwan-fda-mcp-server")
 EXPECTED_TARGET = "taiwan_fda_mcp.mcp_server:main"
 
 
-def test_console_script_is_declared():
-    """The distribution exposes the `taiwan-fda-mcp-server` console script.
+@pytest.mark.parametrize("script", CONSOLE_SCRIPTS)
+def test_console_script_is_declared(script):
+    """Each documented console script is declared and points at main().
 
-    This is the contract `uvx taiwan-fda-mcp-server` / a client's MCP config
-    relies on. Renaming the entry point silently breaks every install.
+    `uvx taiwan-fda-mcp` and a client's MCP config rely on this contract.
+    Renaming or dropping an entry point silently breaks every install.
     """
     scripts = {e.name: e.value for e in entry_points(group="console_scripts")}
-    assert CONSOLE_SCRIPT in scripts
-    assert scripts[CONSOLE_SCRIPT] == EXPECTED_TARGET
+    assert script in scripts
+    assert scripts[script] == EXPECTED_TARGET
 
 
-def test_console_script_loads_to_callable():
-    """The entry point resolves to a zero-arg callable (the stdio server boot).
-
-    Guards against the target module/function going missing without the
-    `[project.scripts]` declaration being updated.
-    """
-    (ep,) = (e for e in entry_points(group="console_scripts") if e.name == CONSOLE_SCRIPT)
-    main = ep.load()
-    assert callable(main)
+@pytest.mark.parametrize("script", CONSOLE_SCRIPTS)
+def test_console_script_loads_to_callable(script):
+    """Each entry point resolves to a callable (the stdio server boot)."""
+    (ep,) = (e for e in entry_points(group="console_scripts") if e.name == script)
+    assert callable(ep.load())

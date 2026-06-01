@@ -56,7 +56,7 @@ gives you the official TFDA source URL.
 environment — no manual install:
 
 ```bash
-uvx taiwan-fda-mcp-server
+uvx taiwan-fda-mcp
 ```
 
 ### Option B — from source
@@ -65,7 +65,7 @@ uvx taiwan-fda-mcp-server
 git clone https://github.com/shin13/opentaimed.git
 cd opentaimed/taiwan-fda-mcp
 uv sync
-uv run taiwan-fda-mcp-server
+uv run taiwan-fda-mcp
 ```
 
 ## How to use it (connect your AI client)
@@ -76,9 +76,9 @@ question in Chinese. The three tools appear automatically.
 **Claude Code**
 
 ```bash
-claude mcp add taiwan-fda -- uvx taiwan-fda-mcp-server
+claude mcp add taiwan-fda -- uvx taiwan-fda-mcp
 # from source:
-claude mcp add taiwan-fda -- uv run --directory /absolute/path/to/taiwan-fda-mcp taiwan-fda-mcp-server
+claude mcp add taiwan-fda -- uv run --directory /absolute/path/to/taiwan-fda-mcp taiwan-fda-mcp
 ```
 
 **Claude Desktop** — edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS), then restart:
@@ -88,21 +88,21 @@ claude mcp add taiwan-fda -- uv run --directory /absolute/path/to/taiwan-fda-mcp
   "mcpServers": {
     "taiwan-fda": {
       "command": "uvx",
-      "args": ["taiwan-fda-mcp-server"]
+      "args": ["taiwan-fda-mcp"]
     }
   }
 }
 ```
 
 From source, use `"command": "uv"` with
-`"args": ["run", "--directory", "/absolute/path/to/taiwan-fda-mcp", "taiwan-fda-mcp-server"]`.
+`"args": ["run", "--directory", "/absolute/path/to/taiwan-fda-mcp", "taiwan-fda-mcp"]`.
 
 **Codex CLI** — add to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.taiwan-fda]
 command = "uvx"
-args = ["taiwan-fda-mcp-server"]
+args = ["taiwan-fda-mcp"]
 ```
 
 ### Example
@@ -157,7 +157,7 @@ link so you can check it yourself.
 [`uv`](https://docs.astral.sh/uv/) 會在用完即丟的環境下載並執行,不需手動安裝:
 
 ```bash
-uvx taiwan-fda-mcp-server
+uvx taiwan-fda-mcp
 ```
 
 **方法 B — 從原始碼**
@@ -166,7 +166,7 @@ uvx taiwan-fda-mcp-server
 git clone https://github.com/shin13/opentaimed.git
 cd opentaimed/taiwan-fda-mcp
 uv sync
-uv run taiwan-fda-mcp-server
+uv run taiwan-fda-mcp
 ```
 
 ### 裝好之後怎麼用(連到你的 AI 工具)
@@ -176,9 +176,9 @@ uv run taiwan-fda-mcp-server
 **Claude Code**
 
 ```bash
-claude mcp add taiwan-fda -- uvx taiwan-fda-mcp-server
+claude mcp add taiwan-fda -- uvx taiwan-fda-mcp
 # 從原始碼:
-claude mcp add taiwan-fda -- uv run --directory /絕對路徑/到/taiwan-fda-mcp taiwan-fda-mcp-server
+claude mcp add taiwan-fda -- uv run --directory /絕對路徑/到/taiwan-fda-mcp taiwan-fda-mcp
 ```
 
 **Claude Desktop** — 編輯 `~/Library/Application Support/Claude/claude_desktop_config.json`(macOS),然後重新啟動:
@@ -188,21 +188,21 @@ claude mcp add taiwan-fda -- uv run --directory /絕對路徑/到/taiwan-fda-mcp
   "mcpServers": {
     "taiwan-fda": {
       "command": "uvx",
-      "args": ["taiwan-fda-mcp-server"]
+      "args": ["taiwan-fda-mcp"]
     }
   }
 }
 ```
 
 從原始碼安裝時,把 `command` 改成 `"uv"`、`args` 改成
-`["run", "--directory", "/絕對路徑/到/taiwan-fda-mcp", "taiwan-fda-mcp-server"]`。
+`["run", "--directory", "/絕對路徑/到/taiwan-fda-mcp", "taiwan-fda-mcp"]`。
 
 **Codex CLI** — 加到 `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.taiwan-fda]
 command = "uvx"
-args = ["taiwan-fda-mcp-server"]
+args = ["taiwan-fda-mcp"]
 ```
 
 ### 範例
