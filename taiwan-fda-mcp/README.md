@@ -1,5 +1,7 @@
 # taiwan-fda-mcp
 
+[![PyPI](https://img.shields.io/pypi/v/taiwan-fda-mcp)](https://pypi.org/project/taiwan-fda-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/taiwan-fda-mcp)](https://pypi.org/project/taiwan-fda-mcp/)
 [![Tests](https://github.com/shin13/opentaimed/actions/workflows/test.yml/badge.svg)](https://github.com/shin13/opentaimed/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/shin13/opentaimed/blob/main/LICENSE)
 
@@ -8,7 +10,7 @@ and drug-license data — directly from your AI assistant.
 
 **English below · [前往繁體中文說明 ↓](#繁體中文)**
 
-![How it works: you ask your AI assistant in plain language, taiwan-fda-mcp queries the official TFDA APIs, and you get an answer with citations.](docs/architecture.svg)
+![How it works: you ask your AI assistant in plain language, taiwan-fda-mcp queries the official TFDA APIs, and you get an answer with citations.](https://raw.githubusercontent.com/shin13/opentaimed/main/taiwan-fda-mcp/docs/architecture.svg)
 
 > **This is NOT an official Taiwan FDA product.** It is an independent,
 > open-source tool that reads the *public* TFDA APIs (`mcp.fda.gov.tw` and
