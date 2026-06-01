@@ -32,7 +32,7 @@ The design principle:
 
 | Path | Status | Description |
 |---|---|---|
-| [`taiwan-fda-mcp/`](./taiwan-fda-mcp) | shipped — v0.2.0 | MCP server with three tools (`search_drugs`, `get_package_insert`, `check_insert_updates`) over stdio. Works with any MCP-compatible client (Claude Desktop, etc.). |
+| [`taiwan-fda-mcp/`](./taiwan-fda-mcp) | shipped — v0.2.1 | MCP server with three tools (`search_drugs`, `get_package_insert`, `check_insert_updates`) over stdio. Works with any MCP-compatible client (Claude Desktop, etc.). |
 | FastAPI backend | planned | Web API surface for non-MCP clients. |
 | Next.js frontend | planned | Clinician-facing query UI. |
 
