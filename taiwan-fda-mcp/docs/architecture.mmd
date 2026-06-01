@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant U as 👤 User
+    participant C as 🤖 AI assistant
+    participant M as 🔌 taiwan-fda-mcp
+    participant F as 🏛️ TFDA official APIs
+
+    U->>C: Ask in plain language<br/>"What's the dosage for 脈優?"
+    C->>M: Call tools (search → insert)
+    M->>F: Query official data
+    F-->>M: Drug license + package insert
+    M-->>C: Structured data + source links
+    C-->>U: Answer with citations

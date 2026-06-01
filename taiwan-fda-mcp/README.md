@@ -1,66 +1,85 @@
 # taiwan-fda-mcp
 
-MCP server exposing Taiwan FDA drug information (仿單 + 許可證 metadata) to any MCP-compatible client.
+[![Tests](https://github.com/shin13/opentaimed/actions/workflows/test.yml/badge.svg)](https://github.com/shin13/opentaimed/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/shin13/opentaimed/blob/main/LICENSE)
 
-> [!IMPORTANT]
-> **This is NOT an official Taiwan FDA product.** It is an independent
-> open-source wrapper around public TFDA APIs (`mcp.fda.gov.tw` GetDrugDoc +
-> `data.fda.gov.tw` opendata). The TFDA does not endorse, review, or maintain
-> this software. Data is reproduced from upstream TFDA endpoints without
-> modification of clinical content, but **always verify against the official
-> source** (`source_url` / `human_url` are returned with every response)
-> before any clinical decision. This software is not a medical device and
-> not a clinical decision support system.
+Look up official **Taiwan FDA (TFDA)** drug information — package inserts (仿單)
+and drug-license data — directly from your AI assistant.
 
-## Tools
+**English below · [前往繁體中文說明 ↓](#繁體中文)**
 
-- `search_drugs(query, name_zh, name_en, ingredient, indication, applicant, manufacturer, form, drug_class, country, limit)` — multi-field license search over Dataset 37. All filters optional and AND-combined; free-text fields match by case-insensitive substring, `country` by exact code. Duplicate-manufacturer rows collapse into one result with a `manufacturers` list.
-- `get_package_insert(license_no, fields)` — fetch 仿單 sections + citation metadata
-- `check_insert_updates(since_date, license_list?)` — find inserts updated since the given date
+![How it works: you ask your AI assistant in plain language, taiwan-fda-mcp queries the official TFDA APIs, and you get an answer with citations.](docs/architecture.svg)
 
-## Install
+> **This is NOT an official Taiwan FDA product.** It is an independent,
+> open-source tool that reads the *public* TFDA APIs (`mcp.fda.gov.tw` and
+> `data.fda.gov.tw`). The goal is a **reliable, source-cited** way to look up
+> Taiwan drug information: every answer links back to the official TFDA page.
+> Always verify there before any clinical decision. This is not a medical device.
 
-The server speaks MCP over stdio. There are two ways to run it.
+## What is it?
 
-### Recommended — `uvx` (zero clone)
+An MCP server. It gives an AI assistant (Claude Desktop, Claude Code, Codex, …)
+the ability to search Taiwan's official drug database and read package inserts.
+You ask a question in plain Chinese; the assistant fetches the real TFDA data and
+answers — with a link to the source.
 
-> [!NOTE]
-> Available once the first release is published to PyPI (see
-> [`CHANGELOG.md`](../CHANGELOG.md)). Until then, use the **from source** path
-> below. `uvx` downloads, runs in an ephemeral environment, and self-updates —
-> no manual install step. The dataset cache lives in your per-user OS cache dir,
-> not the ephemeral package tree, so it survives across runs.
+## What can it do?
+
+It adds three tools to your assistant:
+
+- **`search_drugs`** — find a drug by Chinese/English name, ingredient,
+  indication, maker, and more.
+- **`get_package_insert`** — read the official 仿單 of one drug license
+  (indications, dosage, warnings, side effects…), with a source link.
+- **`check_insert_updates`** — list inserts updated since a given date.
+
+You don't call these by hand. You just ask your assistant a question, e.g.:
+
+- What's the dosage for 脈優 (amlodipine)?
+- Does Herceptin's package insert carry a black box warning?
+- What does the package insert for 綠油精 (an OTC liniment) say?
+- Which drugs contain valsartan?
+- Which package inserts were updated in the last 3 days?
+
+Behind the scenes it searches → picks the right license → quotes the insert →
+gives you the official TFDA source URL.
+
+## How to install
+
+### Option A — `uvx` (easiest, nothing to clone)
+
+> Available once the first release is on PyPI. Until then, use Option B.
+
+[`uv`](https://docs.astral.sh/uv/) downloads and runs it in a throwaway
+environment — no manual install:
 
 ```bash
 uvx taiwan-fda-mcp-server
 ```
 
-### From source (development / pre-release)
+### Option B — from source
 
 ```bash
+git clone https://github.com/shin13/opentaimed.git
+cd opentaimed/taiwan-fda-mcp
 uv sync
-cp .env.example .env  # optional — defaults work for public FDA APIs
 uv run taiwan-fda-mcp-server
 ```
 
-## Connect from an MCP client
+## How to use it (connect your AI client)
 
-Each client wires the same server in its own config format. The three tools
-appear after a restart/reload; ask in Chinese, e.g. `脈優錠 5mg 的用法用量？`.
+Add the server to your client's config, restart it, then just ask a drug
+question in Chinese. The three tools appear automatically.
 
-### Claude Code
+**Claude Code**
 
 ```bash
-# uvx (after PyPI release)
 claude mcp add taiwan-fda -- uvx taiwan-fda-mcp-server
-
-# from source
+# from source:
 claude mcp add taiwan-fda -- uv run --directory /absolute/path/to/taiwan-fda-mcp taiwan-fda-mcp-server
 ```
 
-### Claude Desktop
-
-Add to your config (macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`), then restart Claude Desktop:
+**Claude Desktop** — edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS), then restart:
 
 ```json
 {
@@ -73,18 +92,10 @@ Add to your config (macOS: `~/Library/Application Support/Claude/claude_desktop_
 }
 ```
 
-From source, swap the `command`/`args` for:
+From source, use `"command": "uv"` with
+`"args": ["run", "--directory", "/absolute/path/to/taiwan-fda-mcp", "taiwan-fda-mcp-server"]`.
 
-```json
-{
-  "command": "uv",
-  "args": ["run", "--directory", "/absolute/path/to/taiwan-fda-mcp", "taiwan-fda-mcp-server"]
-}
-```
-
-### Codex CLI
-
-Add to `~/.codex/config.toml`:
+**Codex CLI** — add to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.taiwan-fda]
@@ -92,11 +103,126 @@ command = "uvx"
 args = ["taiwan-fda-mcp-server"]
 ```
 
-## Test
+### Example
+
+Ask your assistant:
+
+> What's the dosage for 脈優 (amlodipine)?
+
+It replies with the dosage section from the official 仿單, plus the TFDA source
+link so you can check it yourself.
+
+---
+
+## 繁體中文
+
+從你的 AI 助理直接查詢**台灣食藥署（TFDA）**的官方藥物資訊——仿單與藥品許可證資料。
+
+> **這不是台灣食藥署的官方產品。** 這是一個獨立的開源工具,只讀取 TFDA 的
+> *公開* API（`mcp.fda.gov.tw` 與 `data.fda.gov.tw`）。目標是做一個
+> **可靠、且每筆都附上出處**的台灣藥物資訊查詢工具:每個回答都會附上 TFDA 官方頁面連結。
+> 臨床決策前請務必到官方頁面再次確認。本工具不是醫療器材。
+
+### 這是什麼?
+
+一個 MCP server。它讓 AI 助理（Claude Desktop、Claude Code、Codex…)能搜尋台灣官方藥物資料庫、讀取仿單。
+你用中文問問題,助理就去抓真實的 TFDA 資料來回答,並附上出處。
+
+### 可以做什麼?
+
+它幫你的助理加上三個工具:
+
+- **`search_drugs`** — 用中／英文藥名、成分、適應症、製造商等條件找藥。
+- **`get_package_insert`** — 讀某一張藥證的官方仿單(適應症、用法用量、警語、副作用…),附出處連結。
+- **`check_insert_updates`** — 列出某日期之後更新過的仿單。
+
+你不用自己呼叫這些工具,直接問助理就好,例如:
+
+- 脈優的用法用量？
+- Herceptin 的仿單有沒有加框警語？
+- 綠油精的仿單內容？
+- 有哪些含 valsartan 的藥？
+- 最近 3 天有哪些仿單更新？
+
+它會自動:搜尋 → 選對的藥證 → 引用仿單 → 給你 TFDA 官方來源網址。
+
+### 怎麼安裝
+
+**方法 A — `uvx`(最簡單,不用 clone)**
+
+> 等第一版發布到 PyPI 後即可使用;在那之前請用方法 B。
+
+[`uv`](https://docs.astral.sh/uv/) 會在用完即丟的環境下載並執行,不需手動安裝:
 
 ```bash
-uv run pytest                       # unit tests (default)
-uv run pytest -m integration        # live FDA API tests
-uv run ruff check .
-uv run pyright src
+uvx taiwan-fda-mcp-server
 ```
+
+**方法 B — 從原始碼**
+
+```bash
+git clone https://github.com/shin13/opentaimed.git
+cd opentaimed/taiwan-fda-mcp
+uv sync
+uv run taiwan-fda-mcp-server
+```
+
+### 裝好之後怎麼用(連到你的 AI 工具)
+
+把 server 加進你工具的設定檔,重新啟動,然後直接用中文問藥物問題,三個工具會自動出現。
+
+**Claude Code**
+
+```bash
+claude mcp add taiwan-fda -- uvx taiwan-fda-mcp-server
+# 從原始碼:
+claude mcp add taiwan-fda -- uv run --directory /絕對路徑/到/taiwan-fda-mcp taiwan-fda-mcp-server
+```
+
+**Claude Desktop** — 編輯 `~/Library/Application Support/Claude/claude_desktop_config.json`(macOS),然後重新啟動:
+
+```json
+{
+  "mcpServers": {
+    "taiwan-fda": {
+      "command": "uvx",
+      "args": ["taiwan-fda-mcp-server"]
+    }
+  }
+}
+```
+
+從原始碼安裝時,把 `command` 改成 `"uv"`、`args` 改成
+`["run", "--directory", "/絕對路徑/到/taiwan-fda-mcp", "taiwan-fda-mcp-server"]`。
+
+**Codex CLI** — 加到 `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.taiwan-fda]
+command = "uvx"
+args = ["taiwan-fda-mcp-server"]
+```
+
+### 範例
+
+問你的助理:
+
+> 脈優的用法用量？
+
+它會回給你官方仿單裡的用法用量章節,並附上 TFDA 來源連結讓你自己核對。
+
+---
+
+## Development · 開發
+
+For tests, linting, and type-checking, see the repository:
+<https://github.com/shin13/opentaimed>
+
+```bash
+uv run pytest          # unit tests
+uv run ruff check .    # lint
+uv run pyright src     # type-check
+```
+
+License: MIT (with clinical disclaimer) ·
+[Changelog](https://github.com/shin13/opentaimed/blob/main/CHANGELOG.md)
