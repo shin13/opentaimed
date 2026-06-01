@@ -6,11 +6,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/shin13/opentaimed/blob/main/LICENSE)
 
 Look up official **Taiwan FDA (TFDA)** drug information — package inserts (仿單)
-and drug-license data — directly from your AI assistant.
+and drug-license data — directly from your AI agent.
 
 **English below · [前往繁體中文說明 ↓](#繁體中文)**
 
-![How it works: you ask your AI assistant in plain language, taiwan-fda-mcp queries the official TFDA APIs, and you get an answer with citations.](https://raw.githubusercontent.com/shin13/opentaimed/main/taiwan-fda-mcp/docs/architecture.svg)
+![How it works: you ask your AI agent in plain language, taiwan-fda-mcp queries the official TFDA APIs, and you get an answer with citations.](https://raw.githubusercontent.com/shin13/opentaimed/main/taiwan-fda-mcp/docs/architecture.svg)
 
 > **This is NOT an official Taiwan FDA product.** It is an independent,
 > open-source tool that reads the *public* TFDA APIs (`mcp.fda.gov.tw` and
@@ -20,7 +20,7 @@ and drug-license data — directly from your AI assistant.
 
 ## What is it?
 
-An MCP server. It gives an AI assistant (Claude Desktop, Claude Code, Codex, …)
+An MCP server. It gives an AI agent (Claude Desktop, Claude Code, Codex, …)
 the ability to search Taiwan's official drug database and read package inserts.
 You ask a question in plain Chinese; the assistant fetches the real TFDA data and
 answers — with a link to the source.
@@ -68,7 +68,7 @@ uv sync
 uv run taiwan-fda-mcp
 ```
 
-## How to use it (connect your AI client)
+## How to use it (connect your AI agent)
 
 Add the server to your client's config, restart it, then just ask a drug
 question in Chinese. The three tools appear automatically.
@@ -118,7 +118,7 @@ link so you can check it yourself.
 
 ## 繁體中文
 
-從你的 AI 助理直接查詢**台灣食藥署（TFDA）**的官方藥物資訊——仿單與藥品許可證資料。
+從你的 AI 代理人直接查詢**台灣食藥署（TFDA）**的官方藥物資訊——仿單與藥品許可證資料。
 
 > **這不是台灣食藥署的官方產品。** 這是一個獨立的開源工具,只讀取 TFDA 的
 > *公開* API（`mcp.fda.gov.tw` 與 `data.fda.gov.tw`）。目標是做一個
@@ -127,7 +127,7 @@ link so you can check it yourself.
 
 ### 這是什麼?
 
-一個 MCP server。它讓 AI 助理（Claude Desktop、Claude Code、Codex…)能搜尋台灣官方藥物資料庫、讀取仿單。
+一個 MCP server。它讓 AI 代理人（Claude Desktop、Claude Code、Codex…)能搜尋台灣官方藥物資料庫、讀取仿單。
 你用中文問問題,助理就去抓真實的 TFDA 資料來回答,並附上出處。
 
 ### 可以做什麼?
@@ -169,7 +169,7 @@ uv sync
 uv run taiwan-fda-mcp
 ```
 
-### 裝好之後怎麼用(連到你的 AI 工具)
+### 裝好之後怎麼用(連到你的 AI 代理人)
 
 把 server 加進你工具的設定檔,重新啟動,然後直接用中文問藥物問題,三個工具會自動出現。
 
