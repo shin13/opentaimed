@@ -15,6 +15,7 @@ import respx
 import taiwan_fda_mcp.tools as _tools_mod
 from taiwan_fda_mcp.config import Settings
 from taiwan_fda_mcp.exceptions import DatasetFetchError, RCode
+from taiwan_fda_mcp.sources.insert.throttle import get_insert_throttle
 from taiwan_fda_mcp.sources.opendata.dataset37 import parse_rows, write_to_cache
 from taiwan_fda_mcp.tools import (
     check_insert_updates,
@@ -51,6 +52,7 @@ def seeded_settings(tmp_path: Path, fixtures_dir: Path) -> Settings:
         DATASET37_CACHE_DIR=cache_dir,
         DATASET37_TTL_HOURS=24,
         FDA_RATE_LIMIT_INTERVAL_SECONDS=0.0,
+        INSERT_THROTTLE_MIN_INTERVAL_SECONDS=0.0,
     )
 
 
@@ -866,3 +868,27 @@ async def test_search_whitespace_only_is_no_criteria_error(seeded_settings):
     resp = (await search_drugs(query="   ", name_zh="  ", settings=seeded_settings)).model_dump()
     assert resp["error"]["code"] == "SEARCH_NO_CRITERIA"
     assert resp["total_matched"] == 0
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_configures_throttle_from_settings(
+    seeded_settings, fixtures_dir: Path
+):
+    """tools.get_package_insert must push the configured interval onto the
+    shared egress throttle so the gate is actually armed in Model B."""
+    get_insert_throttle().min_interval = 0.0  # ensure pre-state is 0 before test
+
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    settings = Settings(  # type: ignore[call-arg]
+        DATASET37_CACHE_DIR=seeded_settings.DATASET37_CACHE_DIR,
+        DATASET37_TTL_HOURS=24,
+        FDA_RATE_LIMIT_INTERVAL_SECONDS=0.0,
+        FDA_INSERT_BASE_URL="https://mcp.fda.gov.tw",
+        INSERT_THROTTLE_MIN_INTERVAL_SECONDS=0.7,
+    )
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        await get_package_insert("衛署藥輸字第021571號", settings=settings)
+    assert get_insert_throttle().min_interval == 0.7  # noqa: PLR2004
