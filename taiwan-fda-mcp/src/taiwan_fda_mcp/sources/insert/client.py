@@ -9,6 +9,7 @@ import httpx
 from taiwan_fda_mcp.exceptions import InsertFetchError, RCode
 from taiwan_fda_mcp.models import DrugInsert
 from taiwan_fda_mcp.sources.insert.parser import parse_get_drug_doc
+from taiwan_fda_mcp.sources.insert.throttle import InsertEgressThrottle, get_insert_throttle
 
 _logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ async def fetch_drug_insert(
     timeout: float = 120.0,  # noqa: ASYNC109 — wide date ranges return 20MB+ XML in 30-60s
     max_retries: int = 2,
     retry_backoff: float = 0.5,
+    throttle: InsertEgressThrottle | None = None,
 ) -> list[DrugInsert]:
     """Fetch inserts from mcp.fda.gov.tw GetDrugDoc.
 
@@ -56,6 +58,8 @@ async def fetch_drug_insert(
         max_retries: number of retry attempts on transient failure (default 2,
             i.e. up to 3 total HTTP calls).
         retry_backoff: base sleep seconds between retries; doubles each attempt.
+        throttle: process-wide egress gate; defaults to the shared singleton.
+            Each HTTP attempt awaits `throttle.acquire()` before sending.
 
     Raises:
         InsertFetchError: HTTP failure (after retries exhausted) or missing
@@ -78,6 +82,8 @@ async def fetch_drug_insert(
     url = f"{base_url.rstrip('/')}{_PATH}"
     _logger.info("insert.fetch.start", extra={"params": params})
 
+    throttle = throttle or get_insert_throttle()
+
     body: bytes | None = None
     last_exc: Exception | None = None
     try:
@@ -85,6 +91,10 @@ async def fetch_drug_insert(
             timeout=timeout, headers={"User-Agent": _USER_AGENT}
         ) as client:
             for attempt in range(max_retries + 1):
+                # Shared inter-request rate floor (process-wide), gating every
+                # attempt incl. retries. Distinct from the per-call tail-sleep
+                # on rate_limit_interval in the `finally` below.
+                await throttle.acquire()
                 try:
                     response = await client.get(url, params=params)
                 except httpx.RequestError as exc:

@@ -22,6 +22,7 @@ from taiwan_fda_mcp.exceptions import (
 from taiwan_fda_mcp.models import DrugInsert, DrugLicense, InsertSection
 from taiwan_fda_mcp.sources.insert.client import fetch_drug_insert
 from taiwan_fda_mcp.sources.insert.html_text import html_to_text
+from taiwan_fda_mcp.sources.insert.throttle import InsertEgressThrottle, get_insert_throttle
 from taiwan_fda_mcp.sources.license_code import license_str_to_code
 from taiwan_fda_mcp.sources.opendata.client import fetch_dataset37
 from taiwan_fda_mcp.sources.opendata.dataset37 import (
@@ -372,6 +373,17 @@ async def search_drugs(
     )
 
 
+def _armed_insert_throttle(s: Settings) -> InsertEgressThrottle:
+    """Return the shared insert egress throttle, mutating its ``min_interval``
+    to the configured ``INSERT_THROTTLE_MIN_INTERVAL_SECONDS``.
+
+    Side effect: writes to the process-wide singleton (idempotent; the write
+    is atomic under single-threaded asyncio)."""
+    throttle = get_insert_throttle()
+    throttle.min_interval = s.INSERT_THROTTLE_MIN_INTERVAL_SECONDS
+    return throttle
+
+
 async def get_package_insert(
     license_no: str,
     *,
@@ -408,6 +420,7 @@ async def get_package_insert(
             base_url=s.FDA_INSERT_BASE_URL,
             license_code=code,
             rate_limit_interval=s.FDA_RATE_LIMIT_INTERVAL_SECONDS,
+            throttle=_armed_insert_throttle(s),
         )
     except (InsertFetchError, InsertParseError) as exc:
         return _error_response(license_no, exc.code, exc.message)
@@ -552,6 +565,7 @@ async def check_insert_updates(
                 startdate=window_start.strftime("%Y/%m/%d"),
                 enddate=window_end.strftime("%Y/%m/%d"),
                 rate_limit_interval=s.FDA_RATE_LIMIT_INTERVAL_SECONDS,
+                throttle=_armed_insert_throttle(s),
             )
         except (InsertFetchError, InsertParseError) as exc:
             _logger.warning(

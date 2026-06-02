@@ -7,6 +7,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- **Insert egress throttle** — a process-wide minimum-interval gate on outbound
+  `GetDrugDoc` (package-insert) requests, configurable via
+  `INSERT_THROTTLE_MIN_INTERVAL_SECONDS` (default 0.5s). Prerequisite for the
+  shared HTTP service (ADR-0010): prevents a single deployment from
+  concentrating every clinician's lookup onto one egress IP and tripping
+  TFDA-side rate limiting. Off when set to 0; individual `uvx` users are
+  effectively unaffected.
+
 ## [0.2.1] — 2026-06-01
 
 ### Fixed
