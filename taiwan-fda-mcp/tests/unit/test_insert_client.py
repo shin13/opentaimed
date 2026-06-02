@@ -9,6 +9,19 @@ import respx
 
 from taiwan_fda_mcp.exceptions import InsertFetchError, InsertParseError
 from taiwan_fda_mcp.sources.insert.client import fetch_drug_insert
+from taiwan_fda_mcp.sources.insert.throttle import InsertEgressThrottle
+
+
+class CountingThrottle(InsertEgressThrottle):
+    """A throttle that records how many times acquire() was awaited."""
+
+    def __init__(self) -> None:
+        super().__init__(min_interval=0.0)
+        self.calls = 0
+
+    async def acquire(self) -> None:
+        self.calls += 1
+        await super().acquire()
 
 
 @pytest.fixture
@@ -154,6 +167,45 @@ async def test_fetch_does_not_retry_on_4xx():
                 retry_backoff=0.0,
             )
     assert route.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_acquires_throttle_once_on_success(sample_xml):
+    """Every successful insert fetch passes through the egress gate exactly once."""
+    throttle = CountingThrottle()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=sample_xml)
+        )
+        await fetch_drug_insert(
+            base_url="https://mcp.fda.gov.tw",
+            license_code="02021571",
+            rate_limit_interval=0.0,
+            throttle=throttle,
+        )
+    assert throttle.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_acquires_throttle_per_attempt_including_retries(sample_xml):
+    """Retries are also egress — each HTTP attempt must pass the gate."""
+    throttle = CountingThrottle()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            side_effect=[
+                httpx.Response(503),
+                httpx.Response(200, content=sample_xml),
+            ]
+        )
+        await fetch_drug_insert(
+            base_url="https://mcp.fda.gov.tw",
+            license_code="02021571",
+            rate_limit_interval=0.0,
+            max_retries=2,
+            retry_backoff=0.0,
+            throttle=throttle,
+        )
+    assert throttle.calls == 2  # noqa: PLR2004 — initial attempt + 1 retry
 
 
 @pytest.mark.asyncio
