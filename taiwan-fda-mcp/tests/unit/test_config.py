@@ -17,3 +17,17 @@ def test_cache_dir_defaults_to_user_cache_not_cwd(monkeypatch):
     assert "taiwan-fda-mcp" in cache_dir
     # not the old cwd-relative default
     assert not cache_dir.startswith(".cache")
+
+
+def test_insert_throttle_interval_default(monkeypatch):
+    """Safe-by-default: the insert egress throttle defaults to 0.5s."""
+    monkeypatch.delenv("INSERT_THROTTLE_MIN_INTERVAL_SECONDS", raising=False)
+    s = get_settings()
+    assert s.INSERT_THROTTLE_MIN_INTERVAL_SECONDS == 0.5  # noqa: PLR2004
+
+
+def test_insert_throttle_interval_env_override(monkeypatch):
+    """Operators of the shared HTTP service tune the interval via env."""
+    monkeypatch.setenv("INSERT_THROTTLE_MIN_INTERVAL_SECONDS", "1.5")
+    s = get_settings()
+    assert s.INSERT_THROTTLE_MIN_INTERVAL_SECONDS == 1.5  # noqa: PLR2004
