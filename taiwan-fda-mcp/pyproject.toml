@@ -62,6 +62,7 @@ asyncio_mode = "auto"
 markers = [
     "unit: unit tests (no network)",
     "integration: integration tests (real network)",
+    "smoke: live real-API smoke tests guarding the TFDA contract (subset of integration)",
     "slow: slow tests",
 ]
 addopts = "-m 'not integration'"
@@ -74,6 +75,14 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S", "ASYNC", "PL", "PT", "TCH"]
 ignore = ["E501", "S101", "PLR0913", "PLW0603"]
+
+[tool.ruff.lint.per-file-ignores]
+# Live smoke tests import `taiwan_fda_mcp.tools` lazily inside each test on
+# purpose: a collection-time top-level import warms Pydantic's schema cache in a
+# different order and reorders an anyOf union in the get_package_insert input
+# schema, breaking the snapshot in tests/unit/test_mcp_schemas.py. The deferred
+# import is the fix, so allow PLC0415 (import-not-at-top) in this file only.
+"tests/integration/test_live_smoke.py" = ["PLC0415"]
 
 [tool.ruff.format]
 quote-style = "double"
