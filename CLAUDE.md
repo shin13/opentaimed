@@ -335,6 +335,14 @@ Test invariants:
   changes manually against a real client (Claude Desktop). See
   [ADR-0002](./docs/adr/0002-mandatory-rules-server-instructions.md)
   for the regression query.
+- **Throttle/rate-limit knobs must be 0 in test fixtures.** Any test
+  fixture that builds a `Settings` and exercises an insert fetch must set
+  both `FDA_RATE_LIMIT_INTERVAL_SECONDS=0.0` **and**
+  `INSERT_THROTTLE_MIN_INTERVAL_SECONDS=0.0`. These intervals trigger real
+  `asyncio.sleep` (respx mocks the HTTP, not the sleep), and the throttle's
+  default is `0.5` — leaving it armed silently inflates the suite from
+  ~1 second to ~14 (tests stay green, just slow). The `seeded_settings`
+  fixture already does this; mirror it in any new fixture.
 
 ## Where to find more
 
