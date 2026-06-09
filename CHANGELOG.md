@@ -8,6 +8,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- **`check_insert_updates` result cap** — new `limit` parameter (default 200,
+  newest-first; 0 disables) bounds the `updates` list, plus `returned` and
+  `truncated` response fields. `total` and `by_date` still reflect every
+  matched update, so a wide date range that matches thousands of inserts no
+  longer floods the response — the caller sees the true scope and can narrow
+  `since_date` or raise `limit`.
 - **Insert egress throttle** — a process-wide minimum-interval gate on outbound
   `GetDrugDoc` (package-insert) requests, configurable via
   `INSERT_THROTTLE_MIN_INTERVAL_SECONDS` (default 0.5s). Prerequisite for the
@@ -15,6 +21,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   concentrating every clinician's lookup onto one egress IP and tripping
   TFDA-side rate limiting. Off when set to 0; individual `uvx` users are
   effectively unaffected.
+
+### Changed
+- **`get_package_insert` no longer duplicates `last_update_date`.** It was
+  returned both as a top-level field and inside the `fields` map; it is now
+  top-level only (saving tokens). Requesting it explicitly via `fields=` is
+  still accepted and served top-level — not flagged as an unknown field.
 
 ## [0.2.1] — 2026-06-01
 
