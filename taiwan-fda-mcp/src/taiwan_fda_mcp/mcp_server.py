@@ -197,7 +197,8 @@ async def get_package_insert(
             Storage — packaging (§13.1), shelf_life (§13.2), storage_conditions (§13.3),
             storage_cautions (§13.4);
             Patient — patient_instructions (§14), other_info (§15);
-            Metadata — last_update_date, insert_version.
+            Metadata — insert_version (last_update_date is always returned as a top-level
+            response field, not a `fields` entry).
             OTC drugs (非處方藥: 成藥/乙類成藥/甲類成藥/指示藥) are detected automatically by
             藥品類別 (<DTYPE>) and use a SEPARATE field set — usage (§2 用途, ≠ Rx indication),
             usage_precautions (§3 使用上注意事項), directions (§4 用法用量, ≠ Rx dosage),
@@ -226,21 +227,29 @@ async def get_package_insert(
 async def check_insert_updates(
     since_date: str,
     license_list: list[str] | None = None,
+    limit: int = 200,
 ) -> CheckInsertUpdatesResponse:
     """List Taiwan FDA drug inserts that were updated on or after the given date.
 
     Args:
         since_date: 'YYYY-MM-DD' — lower bound (inclusive).
         license_list: optional. If provided, only inserts whose license_no is in this list are returned.
+        limit: max entries in `updates` (default 200, newest-first). `total`/`by_date` still
+            reflect every update; `truncated` is true when the list was capped. A wide date
+            range can match thousands of inserts — keep this bounded or narrow `since_date`.
+            Pass 0 or a negative value to disable the cap.
 
     Returns:
-        Dict with `total` (unique inserts updated), `by_date` (histogram newest-first),
-        `updates` (list sorted by last_update_date desc), `batch_errors` (per-window
-        failures from the underlying API — surfaced not swallowed), and `error: null`.
-        The GetDrugDoc API caps each request at a 10-day window — this tool batches
-        automatically; a single FDA outage in one batch does not lose the rest.
+        Dict with `total` (unique inserts updated — full count), `returned` (entries in
+        `updates`), `truncated` (true iff capped at `limit`), `by_date` (histogram newest-first
+        over ALL updates), `updates` (sorted by last_update_date desc, capped at `limit`),
+        `batch_errors` (per-window failures from the underlying API — surfaced not swallowed),
+        and `error: null`. The GetDrugDoc API caps each request at a 10-day window — this tool
+        batches automatically; a single FDA outage in one batch does not lose the rest.
     """
-    return await _check_insert_updates(since_date=since_date, license_list=license_list)
+    return await _check_insert_updates(
+        since_date=since_date, license_list=license_list, limit=limit
+    )
 
 
 @mcp.resource("structure://rx-insert", mime_type="text/markdown")

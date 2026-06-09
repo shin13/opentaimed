@@ -16,6 +16,11 @@
       "default": null,
       "description": "optional. If provided, only inserts whose license_no is in this list are returned."
     },
+    "limit": {
+      "default": 200,
+      "description": "max entries in `updates` (default 200, newest-first). `total`/`by_date` still\nreflect every update; `truncated` is true when the list was capped. A wide date\nrange can match thousands of inserts — keep this bounded or narrow `since_date`.\nPass 0 or a negative value to disable the cap.",
+      "type": "integer"
+    },
     "since_date": {
       "description": "'YYYY-MM-DD' — lower bound (inclusive).",
       "type": "string"

@@ -15,6 +15,7 @@ import respx
 import taiwan_fda_mcp.tools as _tools_mod
 from taiwan_fda_mcp.config import Settings
 from taiwan_fda_mcp.exceptions import DatasetFetchError, RCode
+from taiwan_fda_mcp.models import DrugInsert
 from taiwan_fda_mcp.sources.insert.throttle import get_insert_throttle
 from taiwan_fda_mcp.sources.opendata.dataset37 import parse_rows, write_to_cache
 from taiwan_fda_mcp.tools import (
@@ -324,6 +325,89 @@ async def test_check_insert_updates_filters_license_list(seeded_settings, fixtur
     assert results["total"] == 0
     assert results["by_date"] == {}
     assert results["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_check_insert_updates_truncates_at_limit(seeded_settings, monkeypatch):
+    """S4.3: `updates` is capped at `limit`; `total` keeps the full count and
+    `truncated` flags the cut. `by_date` still summarises ALL updates."""
+    many = [
+        DrugInsert(license_no=f"L{i}", name_zh=f"藥{i}", name_en=f"D{i}", update_date="2025-10-20")
+        for i in range(5)
+    ]
+
+    async def _fake_fetch(**_kwargs):
+        return many
+
+    monkeypatch.setattr(_tools_mod, "fetch_drug_insert", _fake_fetch)
+    result = (
+        await check_insert_updates(
+            since_date="2025-10-19", today="2025-10-20", limit=2, settings=seeded_settings
+        )
+    ).model_dump()
+    assert result["total"] == 5  # noqa: PLR2004
+    assert result["returned"] == 2  # noqa: PLR2004
+    assert len(result["updates"]) == 2  # noqa: PLR2004
+    assert result["truncated"] is True
+    # Histogram reflects every update, not just the returned slice.
+    assert sum(result["by_date"].values()) == 5  # noqa: PLR2004
+
+
+@pytest.mark.asyncio
+async def test_check_insert_updates_not_truncated_under_limit(seeded_settings, fixtures_dir):
+    """Default limit leaves a small result set untouched: returned == total, truncated False."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await check_insert_updates(
+                since_date="2025-10-25", today="2025-10-29", settings=seeded_settings
+            )
+        ).model_dump()
+    assert result["truncated"] is False
+    assert result["returned"] == result["total"]
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_last_update_date_not_duplicated_in_fields(
+    seeded_settings, fixtures_dir
+):
+    """S4.1: last_update_date is top-level metadata only — never duplicated inside `fields`."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(license_no="衛署藥輸字第021571號", settings=seeded_settings)
+        ).model_dump(exclude_none=True)
+    assert result["last_update_date"] == "2025-10-29"
+    assert "last_update_date" not in result["fields"]
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_explicit_last_update_date_not_flagged_unknown(
+    seeded_settings, fixtures_dir
+):
+    """Explicitly requesting last_update_date is accepted (served top-level), not 'unknown'."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = (
+            await get_package_insert(
+                license_no="衛署藥輸字第021571號",
+                fields=["last_update_date", "indication"],
+                settings=seeded_settings,
+            )
+        ).model_dump(exclude_none=True)
+    assert result["last_update_date"] == "2025-10-29"
+    assert "last_update_date" not in result["fields"]
+    assert "indication" in result["fields"]
+    assert "unknown_fields" not in result
 
 
 @pytest.mark.asyncio

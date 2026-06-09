@@ -34,7 +34,7 @@
       "additionalProperties": {
         "type": "integer"
       },
-      "description": "Histogram of {YYYY-MM-DD: count}, sorted newest-first.",
+      "description": "Histogram of {YYYY-MM-DD: count} over ALL updates, sorted newest-first.",
       "type": "object"
     },
     "error": {
@@ -64,6 +64,11 @@
       "default": null,
       "description": "Top-level error if the whole call failed."
     },
+    "returned": {
+      "default": 0,
+      "description": "Number of entries actually in `updates` (== total unless truncated).",
+      "type": "integer"
+    },
     "since_date": {
       "description": "Lower bound of the date range (echo, ISO format).",
       "type": "string"
@@ -82,11 +87,16 @@
     },
     "total": {
       "default": 0,
-      "description": "Number of unique inserts updated in the window.",
+      "description": "Number of unique inserts updated in the window (the FULL count, pre-truncation).",
       "type": "integer"
     },
+    "truncated": {
+      "default": false,
+      "description": "True iff total > returned — `updates` was capped at `limit`. The newest entries are kept; narrow the date range or raise `limit` to see the rest. `by_date` and `total` still reflect ALL updates.",
+      "type": "boolean"
+    },
     "updates": {
-      "description": "List of updated inserts, sorted by last_update_date descending.",
+      "description": "Updated inserts, sorted by last_update_date descending, capped at `limit`.",
       "items": {
         "description": "One updated insert in `check_insert_updates.updates`.",
         "properties": {
