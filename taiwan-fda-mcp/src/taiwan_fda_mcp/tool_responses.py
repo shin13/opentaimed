@@ -326,14 +326,29 @@ class CheckInsertUpdatesResponse(BaseModel):
     error: ErrorInfo | None = Field(
         default=None, description="Top-level error if the whole call failed."
     )
-    total: int = Field(default=0, description="Number of unique inserts updated in the window.")
+    total: int = Field(
+        default=0,
+        description="Number of unique inserts updated in the window (the FULL count, pre-truncation).",
+    )
+    returned: int = Field(
+        default=0,
+        description="Number of entries actually in `updates` (== total unless truncated).",
+    )
+    truncated: bool = Field(
+        default=False,
+        description=(
+            "True iff total > returned — `updates` was capped at `limit`. The newest "
+            "entries are kept; narrow the date range or raise `limit` to see the rest. "
+            "`by_date` and `total` still reflect ALL updates."
+        ),
+    )
     by_date: dict[str, int] = Field(
         default_factory=dict,
-        description="Histogram of {YYYY-MM-DD: count}, sorted newest-first.",
+        description="Histogram of {YYYY-MM-DD: count} over ALL updates, sorted newest-first.",
     )
     updates: list[UpdateEntry] = Field(
         default_factory=list,
-        description="List of updated inserts, sorted by last_update_date descending.",
+        description="Updated inserts, sorted by last_update_date descending, capped at `limit`.",
     )
     batch_errors: list[BatchError] = Field(
         default_factory=list,

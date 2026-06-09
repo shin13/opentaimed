@@ -76,6 +76,13 @@ _ATTRIBUTION = Attribution(
 _RX_ALWAYS_PRESENT_FIELDS: tuple[str, ...] = ("special_warning", "characteristics")
 _OTC_ALWAYS_PRESENT_FIELDS: tuple[str, ...] = ("characteristics",)
 
+# Metadata exposed as TOP-LEVEL response fields, never inside the `fields` map.
+# Requesting one explicitly is accepted (served top-level), not flagged unknown —
+# it is simply not duplicated into `fields` (S4.1). `last_update_date` is always
+# returned top-level; `insert_version` remains a `fields` entry (its top-level twin
+# is a separate, intentional surface).
+_TOP_LEVEL_METADATA_FIELDS: frozenset[str] = frozenset({"last_update_date"})
+
 RX_KEY_FIELDS: list[str] = [
     "indication",
     "dosage",
@@ -84,7 +91,6 @@ RX_KEY_FIELDS: list[str] = [
     "warnings",
     "side_effects",
     "special_warning",
-    "last_update_date",
 ]
 
 RX_FIELDS: list[str] = [
@@ -93,7 +99,6 @@ RX_FIELDS: list[str] = [
     "name_en",
     "license_no",
     "insert_version",
-    "last_update_date",
     # Dataset 37 fields (with XML fallback when row missing from cache)
     "applicant",
     "manufacturer",
@@ -157,7 +162,6 @@ OTC_KEY_FIELDS: list[str] = [
     "directions",
     "otc_warnings",
     "ingredients",
-    "last_update_date",
 ]
 
 OTC_FIELDS: list[str] = [
@@ -166,7 +170,6 @@ OTC_FIELDS: list[str] = [
     "name_en",
     "license_no",
     "insert_version",
-    "last_update_date",
     # Dataset 37 fields (with XML fallback when row missing from cache)
     "applicant",
     "manufacturer",
@@ -190,13 +193,13 @@ ResponseFormat = Literal["concise", "key", "detailed", "full"]
 
 # Field set per response_format, per format. `fields=` (explicit) overrides this.
 _RX_RESPONSE_FORMAT_FIELDS: dict[ResponseFormat, list[str]] = {
-    "concise": ["name_zh", "indication", "special_warning", "last_update_date"],
+    "concise": ["name_zh", "indication", "special_warning"],
     "key": RX_KEY_FIELDS,
     "detailed": RX_FIELDS,
     "full": RX_FIELDS,  # entity lists + image data_url additionally surfaced (not via fields)
 }
 _OTC_RESPONSE_FORMAT_FIELDS: dict[ResponseFormat, list[str]] = {
-    "concise": ["name_zh", "usage", "last_update_date"],
+    "concise": ["name_zh", "usage"],
     "key": OTC_KEY_FIELDS,
     "detailed": OTC_FIELDS,
     "full": OTC_FIELDS,
@@ -454,6 +457,9 @@ async def get_package_insert(
     field_sections: dict[str, str] = {}
     unknown_fields: list[UnknownFieldInfo] = []
     for f in field_list:
+        if f in _TOP_LEVEL_METADATA_FIELDS:
+            # Exposed top-level (e.g. last_update_date) — never duplicated into `fields`.
+            continue
         if f not in known_fields:
             close = difflib.get_close_matches(f, all_fields, n=1, cutoff=0.6)
             unknown_fields.append(
@@ -524,6 +530,7 @@ async def check_insert_updates(
     *,
     license_list: list[str] | None = None,
     today: str | None = None,
+    limit: int = 200,
     settings: Settings | None = None,
 ) -> CheckInsertUpdatesResponse:
     """Find inserts updated between `since_date` and `today` (inclusive).
@@ -532,7 +539,10 @@ async def check_insert_updates(
     batches automatically. Per-batch failures are SURFACED in `batch_errors`
     rather than silently dropping the failed window's data.
 
-    See `CheckInsertUpdatesResponse` for the full response shape.
+    `updates` is capped at `limit` (default 200, newest-first) to bound the
+    response size; `total`, `returned`, `truncated`, and `by_date` let the
+    caller tell whether anything was cut. A non-positive `limit` disables the
+    cap. See `CheckInsertUpdatesResponse` for the full response shape.
     """
     s = settings or get_settings()
     try:
@@ -606,13 +616,18 @@ async def check_insert_updates(
     by_date_counter = Counter(u.last_update_date for u in updates if u.last_update_date)
     by_date = dict(sorted(by_date_counter.items(), key=lambda kv: kv[0], reverse=True))
 
+    total = len(updates)
+    returned_updates = updates[:limit] if limit > 0 else updates
+
     return CheckInsertUpdatesResponse(
         since_date=start.isoformat(),
         today=end.isoformat(),
         error=None,
-        total=len(updates),
+        total=total,
+        returned=len(returned_updates),
+        truncated=total > len(returned_updates),
         by_date=by_date,
-        updates=updates,
+        updates=returned_updates,
         batch_errors=batch_errors,
     )
 
@@ -778,8 +793,8 @@ def _extract_field(  # noqa: PLR0911, PLR0912
         return insert.license_no
     if field == "insert_version":
         return insert.version
-    if field == "last_update_date":
-        return insert.update_date
+    # NOTE: last_update_date is served as a top-level response field
+    # (_TOP_LEVEL_METADATA_FIELDS), not via this resolver — no branch here.
 
     # Dataset 37 fields — prefer cache row, fall back to GetDrugDoc XML
     # (so newly-issued licenses not yet in cache still get manufacturer / applicant).
