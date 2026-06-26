@@ -68,6 +68,7 @@ siblings of `taiwan-fda-mcp/` under the same monorepo when they begin.
 | Investigate a 5xx from upstream | `taiwan-fda-mcp/src/taiwan_fda_mcp/sources/insert/client.py` already retries 5xx + transport errors. Inspect `_logger.warning("insert.fetch.retry", ...)` output. | — |
 | Add a data source beyond TFDA | Follow the **Source Expansion Pattern** below. Open an ADR first. | This file, "Source Expansion Pattern" |
 | Add an architectural decision | Copy `docs/adr/_template.md` → `docs/adr/NNNN-slug.md`, update the index in `docs/adr/README.md`. | [docs/adr/README.md](./docs/adr/README.md) |
+| Run the shared HTTP service (Model B) | Set `MCP_TRANSPORT=http` (`taiwan-fda-mcp/src/taiwan_fda_mcp/config.py`); deploy via `taiwan-fda-mcp/docker-compose.yml` (app internal-only, no public port) + `Caddyfile` (TLS at edge). stdio stays the default. | [ADR-0010](./docs/adr/0010-http-transport-hosting-model.md), README "Deployment" |
 | Run the full check before pushing | `cd taiwan-fda-mcp && uv run ruff check . && uv run pyright src && uv run pytest` | [Testing & Verification](#testing--verification) |
 
 ## Tech Stack

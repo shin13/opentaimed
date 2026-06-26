@@ -1,9 +1,12 @@
 # path: src/taiwan_fda_mcp/mcp_server.py
 # brief: FastMCP stdio server exposing taiwan_fda_mcp.tools as MCP tools.
 
+from contextlib import asynccontextmanager
 from typing import Literal
 
 from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 
 from taiwan_fda_mcp.config import get_settings
 from taiwan_fda_mcp.logging_config import configure_logging
@@ -22,12 +25,22 @@ from taiwan_fda_mcp.tools import (
 from taiwan_fda_mcp.tools import (
     search_drugs as _search_drugs,
 )
+from taiwan_fda_mcp.tools import shutdown as _shutdown_refresh
 
 FieldGroupLiteral = Literal["all", "key_fields"]
 ResponseFormatLiteral = Literal["concise", "key", "detailed", "full"]
 
+
+@asynccontextmanager
+async def _lifespan(_server: FastMCP):
+    """Cancel the background refresh task on graceful shutdown (ADR-0010)."""
+    yield
+    await _shutdown_refresh()
+
+
 mcp: FastMCP = FastMCP(
     name="taiwan-fda-mcp",
+    lifespan=_lifespan,
     instructions=(
         # Chinese fullwidth punctuation is intentional — per-line noqa: RUF001 below.
         "MANDATORY RULES for Taiwan drug queries (任何台灣藥物查詢必須遵守):\n"
@@ -264,11 +277,30 @@ def otc_insert_structure() -> str:
     return OTC_INSERT_STRUCTURE_MD
 
 
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> PlainTextResponse:
+    """Cheap liveness/readiness probe for the reverse proxy / orchestrator."""
+    return PlainTextResponse("OK")
+
+
 def main() -> None:
-    """Console-script entry point — starts the stdio MCP server."""
+    """Console-script entry point.
+
+    Runs over stdio by default (individual `uvx` use, unchanged). Set
+    MCP_TRANSPORT=http to serve the shared institutional HTTP service
+    (ADR-0010 Model B); TLS terminates at a reverse-proxy edge, not here.
+    """
     settings = get_settings()
     configure_logging(settings.LOG_LEVEL)
-    mcp.run()
+    if settings.MCP_TRANSPORT == "http":
+        mcp.run(
+            transport="http",
+            host=settings.MCP_HTTP_HOST,
+            port=settings.MCP_HTTP_PORT,
+            path=settings.MCP_HTTP_PATH,
+        )
+    else:
+        mcp.run()
 
 
 if __name__ == "__main__":

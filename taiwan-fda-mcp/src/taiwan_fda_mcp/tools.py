@@ -2,6 +2,7 @@
 # brief: Pure-Python tool entry points — wrap Layer 1 into MCP-friendly responses.
 
 import asyncio
+import contextlib
 import difflib
 import logging
 import time
@@ -256,6 +257,21 @@ def _trigger_background_refresh(settings: Settings) -> None:
     if _REFRESH_TASK is not None and not _REFRESH_TASK.done():
         return  # single in-flight guard
     _REFRESH_TASK = asyncio.create_task(_refresh_into_memo(settings))
+
+
+async def shutdown() -> None:
+    """Cancel the in-flight background refresh task, if any.
+
+    Called on server shutdown so a graceful SIGTERM does not leave a pending
+    asyncio task (and its traceback) behind. Idempotent.
+    """
+    global _REFRESH_TASK
+    task = _REFRESH_TASK
+    if task is not None and not task.done():
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    _REFRESH_TASK = None
 
 
 def _dataset_freshness(settings: Settings) -> tuple[str | None, float | None, bool]:

@@ -35,5 +35,5 @@ session-state notes kept in `.private/`.
 | [0007](./0007-rx-otc-dual-format-full-fidelity.md) | Rx/OTC dual-format support with full-fidelity insert return | Accepted |
 | [0008](./0008-multi-field-search-flat-filters.md) | Multi-field `search_drugs` via opendata, with flat AND filters | Accepted |
 | [0009](./0009-distributed-install-data-freshness.md) | Data-freshness strategy for distributed installs | Accepted |
-| [0010](./0010-http-transport-hosting-model.md) | HTTP transport and staged hosting model (internal → external) | Proposed |
+| [0010](./0010-http-transport-hosting-model.md) | HTTP transport and staged hosting model (internal → external) | Accepted (Stage 1) |
 | [0011](./0011-opt-in-package-insert-cache.md) | Opt-in package-insert cache | Proposed |

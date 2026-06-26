@@ -1,0 +1,9 @@
+# path: .dockerignore
+.venv
+.git
+__pycache__
+*.pyc
+tests
+.env
+.ruff_cache
+.pytest_cache

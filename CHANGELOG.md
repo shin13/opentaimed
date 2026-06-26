@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- Env-switched HTTP transport (`MCP_TRANSPORT=http`) for the shared institutional
+  service (ADR-0010 Stage 1): non-root `Dockerfile`, `docker-compose.yml` with a
+  Caddy TLS edge, a `/health` readiness route, and graceful background-task
+  shutdown. stdio remains the default — individual `uvx` use is unchanged.
+
 ## [0.3.0] — 2026-06-09
 
 ### Added

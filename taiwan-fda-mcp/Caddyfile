@@ -1,0 +1,8 @@
+# path: Caddyfile
+# brief: Reference TLS edge for ADR-0010 Stage 1 — terminates TLS, proxies to mcp:8765.
+# DOMAIN defaults to opentaimed.local; set it to the hospital-internal hostname.
+
+{$DOMAIN:opentaimed.local} {
+	tls /certs/cert.pem /certs/key.pem        # hospital internal-CA cert (decision B)
+	reverse_proxy mcp:8765
+}
