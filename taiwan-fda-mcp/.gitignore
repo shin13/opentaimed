@@ -12,3 +12,6 @@ build/
 .cache/
 htmlcov/
 .coverage
+
+# TLS cert/key material for the local docker-compose edge — never commit keys.
+certs/
