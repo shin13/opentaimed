@@ -2,6 +2,7 @@
 # brief: Application settings loaded from .env via pydantic-settings.
 
 from pathlib import Path
+from typing import Literal
 
 from platformdirs import user_cache_dir
 from pydantic import Field
@@ -37,6 +38,14 @@ class Settings(BaseSettings):
     DATASET37_TTL_HOURS: int = 24
 
     LOG_LEVEL: str = "INFO"
+
+    # --- Transport (ADR-0010): stdio for individual `uvx` use (default),
+    # http for the shared institutional service (Model B). The Literal makes
+    # an invalid value fail at settings load, not mid-request.
+    MCP_TRANSPORT: Literal["stdio", "http"] = "stdio"
+    MCP_HTTP_HOST: str = "127.0.0.1"  # Docker overrides to 0.0.0.0 (bind all)
+    MCP_HTTP_PORT: int = 8765
+    MCP_HTTP_PATH: str = "/mcp/"  # FastMCP default; trailing slash matters
 
 
 def get_settings() -> Settings:
