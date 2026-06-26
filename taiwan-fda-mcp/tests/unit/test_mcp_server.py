@@ -32,6 +32,39 @@ def patch_settings(monkeypatch, tmp_path, fixtures_dir):
     monkeypatch.setattr(tools_mod, "get_settings", lambda: overridden)
 
 
+def test_main_defaults_to_stdio(monkeypatch):
+    """No env → mcp.run() with no transport kwarg (Model A regression guard)."""
+    import taiwan_fda_mcp.mcp_server as srv
+
+    calls: list[tuple] = []
+    monkeypatch.setattr(srv.mcp, "run", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(srv, "get_settings", lambda: Settings(MCP_TRANSPORT="stdio"))  # type: ignore[call-arg]
+    srv.main()
+    assert calls == [((), {})]
+
+
+def test_main_http_passes_transport_host_port_path(monkeypatch):
+    """MCP_TRANSPORT=http → mcp.run(transport='http', host, port, path)."""
+    import taiwan_fda_mcp.mcp_server as srv
+
+    calls: list[tuple] = []
+    monkeypatch.setattr(srv.mcp, "run", lambda *a, **k: calls.append((a, k)))
+    monkeypatch.setattr(
+        srv,
+        "get_settings",
+        lambda: Settings(  # type: ignore[call-arg]
+            MCP_TRANSPORT="http",
+            MCP_HTTP_HOST="0.0.0.0",  # noqa: S104 — intended inside a container
+            MCP_HTTP_PORT=9000,
+            MCP_HTTP_PATH="/mcp/",
+        ),
+    )
+    srv.main()
+    assert calls == [
+        ((), {"transport": "http", "host": "0.0.0.0", "port": 9000, "path": "/mcp/"})
+    ]
+
+
 @pytest.mark.asyncio
 async def test_lists_three_tools():
     async with Client(mcp) as client:

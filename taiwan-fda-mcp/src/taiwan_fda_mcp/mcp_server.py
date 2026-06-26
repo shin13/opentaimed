@@ -265,10 +265,23 @@ def otc_insert_structure() -> str:
 
 
 def main() -> None:
-    """Console-script entry point — starts the stdio MCP server."""
+    """Console-script entry point.
+
+    Runs over stdio by default (individual `uvx` use, unchanged). Set
+    MCP_TRANSPORT=http to serve the shared institutional HTTP service
+    (ADR-0010 Model B); TLS terminates at a reverse-proxy edge, not here.
+    """
     settings = get_settings()
     configure_logging(settings.LOG_LEVEL)
-    mcp.run()
+    if settings.MCP_TRANSPORT == "http":
+        mcp.run(
+            transport="http",
+            host=settings.MCP_HTTP_HOST,
+            port=settings.MCP_HTTP_PORT,
+            path=settings.MCP_HTTP_PATH,
+        )
+    else:
+        mcp.run()
 
 
 if __name__ == "__main__":
