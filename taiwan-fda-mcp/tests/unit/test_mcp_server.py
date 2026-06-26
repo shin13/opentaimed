@@ -9,6 +9,7 @@ import pytest
 import respx
 from fastmcp import Client
 
+import taiwan_fda_mcp.mcp_server as srv
 import taiwan_fda_mcp.tools as tools_mod
 from taiwan_fda_mcp.config import Settings
 from taiwan_fda_mcp.mcp_server import mcp
@@ -34,8 +35,6 @@ def patch_settings(monkeypatch, tmp_path, fixtures_dir):
 
 def test_main_defaults_to_stdio(monkeypatch):
     """No env → mcp.run() with no transport kwarg (Model A regression guard)."""
-    import taiwan_fda_mcp.mcp_server as srv
-
     calls: list[tuple] = []
     monkeypatch.setattr(srv.mcp, "run", lambda *a, **k: calls.append((a, k)))
     monkeypatch.setattr(srv, "get_settings", lambda: Settings(MCP_TRANSPORT="stdio"))  # type: ignore[call-arg]
@@ -45,8 +44,7 @@ def test_main_defaults_to_stdio(monkeypatch):
 
 def test_main_http_passes_transport_host_port_path(monkeypatch):
     """MCP_TRANSPORT=http → mcp.run(transport='http', host, port, path)."""
-    import taiwan_fda_mcp.mcp_server as srv
-
+    http_host = "0.0.0.0"  # noqa: S104 — intended inside a container
     calls: list[tuple] = []
     monkeypatch.setattr(srv.mcp, "run", lambda *a, **k: calls.append((a, k)))
     monkeypatch.setattr(
@@ -54,15 +52,26 @@ def test_main_http_passes_transport_host_port_path(monkeypatch):
         "get_settings",
         lambda: Settings(  # type: ignore[call-arg]
             MCP_TRANSPORT="http",
-            MCP_HTTP_HOST="0.0.0.0",  # noqa: S104 — intended inside a container
+            MCP_HTTP_HOST=http_host,
             MCP_HTTP_PORT=9000,
             MCP_HTTP_PATH="/mcp/",
         ),
     )
     srv.main()
     assert calls == [
-        ((), {"transport": "http", "host": "0.0.0.0", "port": 9000, "path": "/mcp/"})
+        ((), {"transport": "http", "host": http_host, "port": 9000, "path": "/mcp/"})
     ]
+
+
+@pytest.mark.asyncio
+async def test_health_endpoint_returns_ok():
+    """The /health route answers 200 OK over the HTTP app (proxy readiness probe)."""
+    app = mcp.http_app()  # Starlette ASGI app incl. custom routes
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/health")
+    assert resp.status_code == 200  # noqa: PLR2004
+    assert resp.text == "OK"
 
 
 @pytest.mark.asyncio

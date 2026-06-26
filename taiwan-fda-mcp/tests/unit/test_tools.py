@@ -976,3 +976,15 @@ async def test_get_package_insert_configures_throttle_from_settings(
         )
         await get_package_insert("衛署藥輸字第021571號", settings=settings)
     assert get_insert_throttle().min_interval == 0.7  # noqa: PLR2004
+
+
+@pytest.mark.asyncio
+async def test_shutdown_cancels_inflight_refresh():
+    async def never_finishes(*a, **k):
+        await asyncio.sleep(3600)
+        return []
+
+    _tools_mod._REFRESH_TASK = asyncio.create_task(never_finishes())
+    await asyncio.sleep(0)  # let it start
+    await _tools_mod.shutdown()
+    assert _tools_mod._REFRESH_TASK is None  # cancelled and cleared, no raise
