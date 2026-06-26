@@ -1,6 +1,6 @@
 # ADR-0010: HTTP transport and staged hosting model (internal → external)
 
-- **Status**: Proposed
+- **Status**: Accepted (Stage 1 implemented 2026-06-26; Stage 2 remains future work)
 - **Date**: 2026-06-02
 - **Extends**: [ADR-0009](./0009-distributed-install-data-freshness.md) (distributed-install freshness)
 - **Related**: [ADR-0011](./0011-opt-in-package-insert-cache.md) (insert cache — a Stage 1 prerequisite)

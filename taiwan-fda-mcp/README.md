@@ -114,6 +114,27 @@ Ask your assistant:
 It replies with the dosage section from the official 仿單, plus the TFDA source
 link so you can check it yourself.
 
+## Deployment (shared HTTP service — institutional / 院內)
+
+Run one shared instance many agents connect to (ADR-0010 Model B), instead of
+each user installing via `uvx`:
+
+```bash
+cp .env.example .env          # tune INSERT_THROTTLE_MIN_INTERVAL_SECONDS, DATASET37_TTL_HOURS
+# place your hospital internal-CA cert at ./certs/{cert,key}.pem
+docker compose up -d --build
+```
+
+- TLS terminates at the Caddy edge; the MCP container speaks plain HTTP on an
+  internal network and is **not** reachable except through the proxy.
+- Single worker / single instance only (do not scale replicas — shared in-memory
+  state is per-process; Redis is required first; see ADR-0010).
+- Egress firewall must allow `mcp.fda.gov.tw` and `data.fda.gov.tw`.
+- Internal network only (Stage 1). Public exposure is a separate hardened step
+  (ADR-0010 Stage 2: auth + allowlist + abuse protection).
+- Client URL: `https://<your-host>/mcp/` (trailing slash). Claude Desktop uses
+  Custom Connectors / `mcp-remote`, never a raw `url` in its config file.
+
 ---
 
 ## 繁體中文
