@@ -21,7 +21,8 @@ from taiwan_fda_mcp.exceptions import (
     RCode,
 )
 from taiwan_fda_mcp.models import DrugInsert, DrugLicense, InsertSection
-from taiwan_fda_mcp.sources.insert.client import fetch_drug_insert
+from taiwan_fda_mcp.sources.insert.cache import InsertCache, get_insert_cache
+from taiwan_fda_mcp.sources.insert.client import fetch_drug_insert, fetch_drug_insert_bytes
 from taiwan_fda_mcp.sources.insert.html_text import html_to_text
 from taiwan_fda_mcp.sources.insert.throttle import InsertEgressThrottle, get_insert_throttle
 from taiwan_fda_mcp.sources.license_code import license_str_to_code
@@ -403,6 +404,19 @@ def _armed_insert_throttle(s: Settings) -> InsertEgressThrottle:
     return throttle
 
 
+def _configured_insert_cache(s: Settings) -> InsertCache:
+    """Return the shared insert cache with the configured ADR-0011 knobs applied.
+
+    Side effect: writes to the process-wide singleton (idempotent; atomic under
+    single-threaded asyncio), mirroring ``_armed_insert_throttle``."""
+    cache = get_insert_cache()
+    cache.enabled = s.INSERT_CACHE_ENABLED
+    cache.ttl_hours = s.INSERT_CACHE_TTL_HOURS
+    cache.max_entries = s.INSERT_CACHE_MAX_ENTRIES
+    cache.max_mb = s.INSERT_CACHE_MAX_MB
+    return cache
+
+
 async def get_package_insert(
     license_no: str,
     *,
@@ -434,16 +448,23 @@ async def get_package_insert(
     except (LicensePrefixUnsupportedError, InvalidLicenseError) as exc:
         return _error_response(license_no, exc.code, exc.message)
 
-    try:
-        inserts = await fetch_drug_insert(
+    cache = _configured_insert_cache(s)
+
+    async def _fetch_bytes() -> bytes:
+        # Only runs on a cache miss — so the egress throttle fires only on misses.
+        return await fetch_drug_insert_bytes(
             base_url=s.FDA_INSERT_BASE_URL,
             license_code=code,
             rate_limit_interval=s.FDA_RATE_LIMIT_INTERVAL_SECONDS,
             throttle=_armed_insert_throttle(s),
         )
+
+    try:
+        fetched = await cache.get_or_fetch(code, _fetch_bytes)
     except (InsertFetchError, InsertParseError) as exc:
         return _error_response(license_no, exc.code, exc.message)
 
+    inserts = fetched.inserts
     if not inserts:
         return _error_response(license_no, RCode.INSERT_NOT_FOUND, "FDA API returned no documents")
 
@@ -506,6 +527,13 @@ async def get_package_insert(
     sub_factories = _build_factories(insert.sub_factories) if is_full else []
     companies = _build_companies(insert.companies) if is_full else []
 
+    # retrieved_at is the REAL TFDA fetch time (on a cache hit, the original fetch,
+    # not now); cache_age_hours reflects re-pull recency only (ADR-0011 §7).
+    retrieved_at = datetime.fromtimestamp(fetched.fetched_at, UTC).isoformat()
+    cache_age_hours = (
+        (time.time() - fetched.fetched_at) / 3600 if fetched.from_cache else None
+    )
+
     return GetPackageInsertResponse(
         license_no=license_no,
         error=None,
@@ -517,7 +545,9 @@ async def get_package_insert(
             f"?license={code}&s_code=&startdate=&enddate="
         ),
         human_url=f"{s.FDA_INSERT_BASE_URL.rstrip('/')}/im_detail_1/{quote(license_no, safe='')}",
-        retrieved_at=datetime.now(UTC).isoformat(),
+        retrieved_at=retrieved_at,
+        from_cache=fetched.from_cache,
+        cache_age_hours=cache_age_hours,
         last_update_date=insert.update_date or None,
         insert_version=insert.version or None,
         alternate_versions=alternates,
