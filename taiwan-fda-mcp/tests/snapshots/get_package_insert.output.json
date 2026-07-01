@@ -129,6 +129,18 @@
       },
       "type": "array"
     },
+    "cache_age_hours": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Hours since the cached bytes were pulled from TFDA; null when from_cache is false. Reflects re-pull recency only, NOT clinical staleness (use last_update_date for that)."
+    },
     "companies": {
       "description": "國內藥商 — from <COMPANY> XML repeats. Empty list if absent.",
       "items": {
@@ -207,6 +219,11 @@
         "otc"
       ],
       "type": "string"
+    },
+    "from_cache": {
+      "default": false,
+      "description": "True iff this insert was served from the opt-in in-memory cache (ADR-0011) instead of freshly fetched. `retrieved_at` still reports the REAL TFDA fetch time, and `last_update_date` (the insert's own version date) is unaffected by caching — cite last_update_date as the clinical-currency signal, never cache_age_hours.",
+      "type": "boolean"
     },
     "human_url": {
       "anyOf": [

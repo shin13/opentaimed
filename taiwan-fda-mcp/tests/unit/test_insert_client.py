@@ -8,7 +8,7 @@ import pytest
 import respx
 
 from taiwan_fda_mcp.exceptions import InsertFetchError, InsertParseError
-from taiwan_fda_mcp.sources.insert.client import fetch_drug_insert
+from taiwan_fda_mcp.sources.insert.client import fetch_drug_insert, fetch_drug_insert_bytes
 from taiwan_fda_mcp.sources.insert.throttle import InsertEgressThrottle
 
 
@@ -27,6 +27,36 @@ class CountingThrottle(InsertEgressThrottle):
 @pytest.fixture
 def sample_xml(fixtures_dir: Path) -> bytes:
     return (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+
+
+@pytest.mark.asyncio
+async def test_fetch_drug_insert_bytes_returns_raw_body(sample_xml):
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=sample_xml)
+        )
+        body = await fetch_drug_insert_bytes(
+            base_url="https://mcp.fda.gov.tw",
+            license_code="02021571",
+            rate_limit_interval=0.0,
+        )
+    assert body == sample_xml  # raw bytes, unparsed
+
+
+@pytest.mark.asyncio
+async def test_fetch_drug_insert_still_returns_parsed_models(sample_xml):
+    """The parsed wrapper must keep working unchanged for check_insert_updates."""
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=sample_xml)
+        )
+        inserts = await fetch_drug_insert(
+            base_url="https://mcp.fda.gov.tw",
+            license_code="02021571",
+            rate_limit_interval=0.0,
+        )
+    assert len(inserts) >= 1
+    assert inserts[0].license_no  # a parsed DrugInsert, not bytes
 
 
 @pytest.mark.asyncio

@@ -36,6 +36,43 @@ def test_insert_throttle_interval_env_override(monkeypatch):
     assert s.INSERT_THROTTLE_MIN_INTERVAL_SECONDS == 1.5  # noqa: PLR2004
 
 
+def test_insert_cache_settings_default_off(monkeypatch):
+    """Cache is opt-in: defaults must leave it disabled with ADR-0011 sizing."""
+    for key in (
+        "INSERT_CACHE_ENABLED",
+        "INSERT_CACHE_TTL_HOURS",
+        "INSERT_CACHE_MAX_ENTRIES",
+        "INSERT_CACHE_MAX_MB",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    s = Settings()
+    assert s.INSERT_CACHE_ENABLED is False
+    assert s.INSERT_CACHE_TTL_HOURS == 6.0  # noqa: PLR2004
+    assert s.INSERT_CACHE_MAX_ENTRIES == 1000  # noqa: PLR2004
+    assert s.INSERT_CACHE_MAX_MB == 128.0  # noqa: PLR2004
+
+
+def test_insert_cache_enabled_from_env(monkeypatch):
+    monkeypatch.setenv("INSERT_CACHE_ENABLED", "true")
+    monkeypatch.setenv("INSERT_CACHE_TTL_HOURS", "2")
+    s = Settings()
+    assert s.INSERT_CACHE_ENABLED is True
+    assert s.INSERT_CACHE_TTL_HOURS == 2.0  # noqa: PLR2004
+
+
+def test_insert_cache_rejects_nonpositive_ttl(monkeypatch):
+    """TTL <= 0 would make every entry instantly stale — fail at load, not mid-request."""
+    monkeypatch.setenv("INSERT_CACHE_TTL_HOURS", "0")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_insert_cache_rejects_zero_max_entries(monkeypatch):
+    monkeypatch.setenv("INSERT_CACHE_MAX_ENTRIES", "0")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
 def test_transport_defaults_to_stdio():
     # Assert the field default directly so a local .env cannot affect the result.
     assert Settings.model_fields["MCP_TRANSPORT"].default == "stdio"

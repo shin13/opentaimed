@@ -16,8 +16,10 @@ import taiwan_fda_mcp.tools as _tools_mod
 from taiwan_fda_mcp.config import Settings
 from taiwan_fda_mcp.exceptions import DatasetFetchError, RCode
 from taiwan_fda_mcp.models import DrugInsert
+from taiwan_fda_mcp.sources.insert.cache import get_insert_cache
 from taiwan_fda_mcp.sources.insert.throttle import get_insert_throttle
 from taiwan_fda_mcp.sources.opendata.dataset37 import parse_rows, write_to_cache
+from taiwan_fda_mcp.tool_responses import GetPackageInsertResponse
 from taiwan_fda_mcp.tools import (
     check_insert_updates,
     get_package_insert,
@@ -55,6 +57,15 @@ def seeded_settings(tmp_path: Path, fixtures_dir: Path) -> Settings:
         FDA_RATE_LIMIT_INTERVAL_SECONDS=0.0,
         INSERT_THROTTLE_MIN_INTERVAL_SECONDS=0.0,
     )
+
+
+def test_get_package_insert_response_has_cache_fields():
+    r = GetPackageInsertResponse(license_no="X")
+    assert r.from_cache is False  # safe default
+    assert r.cache_age_hours is None
+    r2 = GetPackageInsertResponse(license_no="X", from_cache=True, cache_age_hours=1.5)
+    assert r2.from_cache is True
+    assert r2.cache_age_hours == 1.5  # noqa: PLR2004
 
 
 @pytest.mark.asyncio
@@ -988,3 +999,58 @@ async def test_shutdown_cancels_inflight_refresh():
     await asyncio.sleep(0)  # let it start
     await _tools_mod.shutdown()
     assert _tools_mod._REFRESH_TASK is None  # cancelled and cleared, no raise
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_cache_hit_skips_refetch(seeded_settings, fixtures_dir):
+    """With the cache on, a repeat lookup is served from memory (one network call)."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    settings = seeded_settings.model_copy(update={"INSERT_CACHE_ENABLED": True})
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        route = router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        first = await get_package_insert(license_no="衛署藥輸字第021571號", settings=settings)
+        second = await get_package_insert(license_no="衛署藥輸字第021571號", settings=settings)
+
+    assert route.call_count == 1  # second served from cache
+    assert first.from_cache is False
+    assert first.cache_age_hours is None
+    assert second.from_cache is True
+    assert second.cache_age_hours is not None
+    assert second.cache_age_hours >= 0
+    assert first.fields == second.fields  # identical content on a hit
+    assert first.last_update_date == second.last_update_date  # citation currency unaffected
+
+
+@pytest.mark.asyncio
+async def test_get_package_insert_cache_disabled_refetches(seeded_settings, fixtures_dir):
+    """Default (cache off): every call fetches live (ADR-0009 behaviour preserved)."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        route = router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        r1 = await get_package_insert(license_no="衛署藥輸字第021571號", settings=seeded_settings)
+        r2 = await get_package_insert(license_no="衛署藥輸字第021571號", settings=seeded_settings)
+
+    assert route.call_count == 2  # noqa: PLR2004
+    assert r1.from_cache is False
+    assert r2.from_cache is False
+    assert r1.cache_age_hours is None
+    assert r2.cache_age_hours is None
+
+
+@pytest.mark.asyncio
+async def test_check_insert_updates_bypasses_insert_cache(seeded_settings, fixtures_dir):
+    """check_insert_updates must neither read nor write the insert cache (ADR-0011 §6)."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    settings = seeded_settings.model_copy(update={"INSERT_CACHE_ENABLED": True})
+    cache = get_insert_cache()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        await check_insert_updates("2025-10-20", today="2025-10-29", settings=settings)
+
+    assert len(cache._store) == 0  # the date-sweep path never populated the cache

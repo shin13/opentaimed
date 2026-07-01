@@ -120,7 +120,8 @@ Run one shared instance many agents connect to (ADR-0010 Model B), instead of
 each user installing via `uvx`:
 
 ```bash
-cp .env.example .env          # tune INSERT_THROTTLE_MIN_INTERVAL_SECONDS, DATASET37_TTL_HOURS
+cp .env.example .env          # tune INSERT_THROTTLE_MIN_INTERVAL_SECONDS, DATASET37_TTL_HOURS;
+                              # set INSERT_CACHE_ENABLED=true to cut repeat insert egress (ADR-0011)
 # place your hospital internal-CA cert at ./certs/{cert,key}.pem
 docker compose up -d --build
 ```
