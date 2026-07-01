@@ -12,6 +12,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   service (ADR-0010 Stage 1): non-root `Dockerfile`, `docker-compose.yml` with a
   Caddy TLS edge, a `/health` readiness route, and graceful background-task
   shutdown. stdio remains the default — individual `uvx` use is unchanged.
+- Opt-in in-memory package-insert cache (ADR-0011): `INSERT_CACHE_ENABLED`
+  (default off), `INSERT_CACHE_TTL_HOURS` (6), `INSERT_CACHE_MAX_ENTRIES` (1000),
+  `INSERT_CACHE_MAX_MB` (128). Caches raw GetDrugDoc XML per license, re-parsed on
+  hit; `get_package_insert` responses gain `from_cache` + `cache_age_hours`
+  (`retrieved_at` stays the real fetch time). Empty and unparseable responses are
+  never cached, so a transient upstream blip cannot pin a false "not found";
+  hit/miss/evict logging with a periodic INFO stats rollup. Cuts repeat egress to
+  `mcp.fda.gov.tw` for the shared HTTP service; individual `uvx` users keep
+  live-fetch behaviour by default.
 
 ## [0.3.0] — 2026-06-09
 
