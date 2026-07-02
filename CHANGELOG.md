@@ -7,6 +7,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-07-02
+
 ### Added
 - Env-switched HTTP transport (`MCP_TRANSPORT=http`) for the shared institutional
   service (ADR-0010 Stage 1): non-root `Dockerfile`, `docker-compose.yml` with a
@@ -239,7 +241,8 @@ shipped at the cut.
 - macOS 14+, Claude Desktop (stdio transport)
 - TFDA endpoints `mcp.fda.gov.tw` and `data.fda.gov.tw` as of 2026-05.
 
-[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/shin13/opentaimed/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/shin13/opentaimed/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/shin13/opentaimed/releases/tag/v0.2.1
 [0.2.0]: https://github.com/shin13/opentaimed/releases/tag/v0.2.0
