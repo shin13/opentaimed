@@ -227,6 +227,24 @@ class GetPackageInsertResponse(BaseModel):
     retrieved_at: str | None = Field(
         default=None, description="ISO 8601 UTC timestamp of this fetch."
     )
+    from_cache: bool = Field(
+        default=False,
+        description=(
+            "True iff this insert was served from the opt-in in-memory cache "
+            "(ADR-0011) instead of freshly fetched. `retrieved_at` still reports "
+            "the REAL TFDA fetch time, and `last_update_date` (the insert's own "
+            "version date) is unaffected by caching — cite last_update_date as the "
+            "clinical-currency signal, never cache_age_hours."
+        ),
+    )
+    cache_age_hours: float | None = Field(
+        default=None,
+        description=(
+            "Hours since the cached bytes were pulled from TFDA; null when "
+            "from_cache is false. Reflects re-pull recency only, NOT clinical "
+            "staleness (use last_update_date for that)."
+        ),
+    )
     last_update_date: str | None = Field(
         default=None, description="ISO date of the insert's last TFDA update."
     )

@@ -30,6 +30,17 @@ class Settings(BaseSettings):
     # (ADR-0010 Model B) should raise this to match their clinician volume.
     INSERT_THROTTLE_MIN_INTERVAL_SECONDS: float = 0.5
 
+    # --- Insert cache (ADR-0011): opt-in, OFF by default. In-memory only,
+    # single-instance (ADR-0010). Caches the raw GetDrugDoc XML per license
+    # code, re-parsed on hit, to cut repeat egress to mcp.fda.gov.tw for the
+    # shared HTTP service. Individual `uvx` users keep ADR-0009 live-fetch
+    # behaviour by leaving this off. TTL is short because inserts are the
+    # clinically-live content; cache_age_hours surfaces the staleness.
+    INSERT_CACHE_ENABLED: bool = False
+    INSERT_CACHE_TTL_HOURS: float = Field(default=6.0, gt=0)
+    INSERT_CACHE_MAX_ENTRIES: int = Field(default=1000, ge=1)
+    INSERT_CACHE_MAX_MB: float = Field(default=128.0, gt=0)
+
     # Per-user OS cache dir (uvx-safe — never the package tree, which is
     # ephemeral/read-only under `uvx`). Override with DATASET37_CACHE_DIR.
     DATASET37_CACHE_DIR: Path = Field(

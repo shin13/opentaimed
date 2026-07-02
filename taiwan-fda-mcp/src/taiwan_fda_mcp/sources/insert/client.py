@@ -26,7 +26,7 @@ _USER_AGENT = (
 )
 
 
-async def fetch_drug_insert(
+async def fetch_drug_insert_bytes(
     *,
     base_url: str,
     license_code: str | None = None,
@@ -38,8 +38,8 @@ async def fetch_drug_insert(
     max_retries: int = 2,
     retry_backoff: float = 0.5,
     throttle: InsertEgressThrottle | None = None,
-) -> list[DrugInsert]:
-    """Fetch inserts from mcp.fda.gov.tw GetDrugDoc.
+) -> bytes:
+    """Fetch the raw GetDrugDoc XML bytes from mcp.fda.gov.tw (no parsing).
 
     At least one of license_code / s_code / startdate / enddate must be supplied.
     Date range is capped by the API at 10 days — caller is responsible for batching.
@@ -64,7 +64,6 @@ async def fetch_drug_insert(
     Raises:
         InsertFetchError: HTTP failure (after retries exhausted) or missing
             required params.
-        InsertParseError: XML parse failure / API <Error> response.
     """
     if not any([license_code, s_code, startdate, enddate]):
         raise InsertFetchError(
@@ -161,4 +160,42 @@ async def fetch_drug_insert(
             detail={"params": params, "last_error": str(last_exc)},
         )
 
+    return body
+
+
+async def fetch_drug_insert(
+    *,
+    base_url: str,
+    license_code: str | None = None,
+    s_code: str | None = None,
+    startdate: str | None = None,
+    enddate: str | None = None,
+    rate_limit_interval: float = 0.5,
+    timeout: float = 120.0,  # noqa: ASYNC109 — see fetch_drug_insert_bytes
+    max_retries: int = 2,
+    retry_backoff: float = 0.5,
+    throttle: InsertEgressThrottle | None = None,
+) -> list[DrugInsert]:
+    """Fetch and parse inserts from GetDrugDoc.
+
+    Thin wrapper over `fetch_drug_insert_bytes` for callers that want parsed
+    models directly (e.g. `check_insert_updates`). `get_package_insert` does NOT
+    use this — it fetches bytes through the ADR-0011 cache and parses on hit.
+
+    Raises:
+        InsertFetchError: HTTP failure (after retries) or missing required params.
+        InsertParseError: XML parse failure / API <Error> response.
+    """
+    body = await fetch_drug_insert_bytes(
+        base_url=base_url,
+        license_code=license_code,
+        s_code=s_code,
+        startdate=startdate,
+        enddate=enddate,
+        rate_limit_interval=rate_limit_interval,
+        timeout=timeout,
+        max_retries=max_retries,
+        retry_backoff=retry_backoff,
+        throttle=throttle,
+    )
     return parse_get_drug_doc(body)

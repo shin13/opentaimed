@@ -1,6 +1,6 @@
 # ADR-0011: Opt-in in-memory package-insert cache
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-06-02
 - **Extends**: [ADR-0009](./0009-distributed-install-data-freshness.md) (which deliberately did *not* cache inserts)
 - **Related**: [ADR-0010](./0010-http-transport-hosting-model.md) (shared HTTP hosting — the main consumer; supplies the single-instance constraint)
