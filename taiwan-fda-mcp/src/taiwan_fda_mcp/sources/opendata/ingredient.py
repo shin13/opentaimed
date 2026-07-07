@@ -26,6 +26,13 @@ def signature(ingredient: str) -> tuple[str, ...]:
     faithful to exactly how each license is registered. Sorting makes the
     signature order-independent ('A;;B' and 'B;;A' collapse to one group).
 
+    EXACT-duplicate components are de-duplicated: some TFDA rows list the same
+    ingredient twice (e.g. 'SENNOSIDE;;SENNOSIDE'), a data-entry artifact that
+    would otherwise be mis-classified as a 複方. De-duping identical strings is
+    NOT normalization — it never merges two DIFFERENT spellings (besylate vs
+    besilate stay distinct); it only collapses byte-identical repeats, so a drug
+    listing one ingredient twice is correctly single-ingredient (單方).
+
     This is the single swappable seam. To later merge salt-form variants
     (the deferred "Option 3" normalization), normalize each component here
     before sorting — no caller, response model, or snapshot needs to change.
@@ -34,10 +41,10 @@ def signature(ingredient: str) -> tuple[str, ...]:
         ingredient: raw 主成分略述 field value.
 
     Returns:
-        Sorted tuple of trimmed component strings; empty tuple if blank.
+        Sorted tuple of trimmed, de-duplicated component strings; empty tuple if blank.
     """
     parts = [p.strip() for p in ingredient.split(_COMBO_DELIMITER) if p.strip()]
-    return tuple(sorted(parts))
+    return tuple(sorted(set(parts)))
 
 
 @dataclass

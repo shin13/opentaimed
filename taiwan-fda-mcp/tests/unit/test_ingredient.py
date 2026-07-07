@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from taiwan_fda_mcp.models import DrugLicense
 from taiwan_fda_mcp.sources.opendata.dataset37 import parse_rows
 from taiwan_fda_mcp.sources.opendata.ingredient import group_by_ingredient, signature
 
@@ -51,6 +52,43 @@ def test_signature_does_not_split_on_comma():
 def test_signature_blank_is_empty_tuple():
     assert signature("") == ()
     assert signature("   ") == ()
+
+
+def test_signature_dedupes_exact_duplicate_components():
+    # 'SENNOSIDE;;SENNOSIDE' is a TFDA data artifact — one ingredient listed
+    # twice. Exact-duplicate collapse makes it mono, NOT a bogus 複方.
+    assert signature("SENNOSIDE;;SENNOSIDE") == ("SENNOSIDE",)
+
+
+def test_signature_dedup_only_collapses_identical_not_variants():
+    # Different spellings are NOT merged — only byte-identical repeats collapse.
+    assert signature("AMLODIPINE BESYLATE;;AMLODIPINE BESILATE") == (
+        "AMLODIPINE BESILATE",
+        "AMLODIPINE BESYLATE",
+    )
+
+
+def test_group_treats_duplicate_component_as_mono():
+    rows = [
+        DrugLicense(
+            license_no="衛署藥製字第037697號",
+            name_zh="便通樂膜衣錠",
+            name_en="THROUGH F.C. TABLETS",
+            ingredient="SENNOSIDE;;SENNOSIDE",
+        ),
+        DrugLicense(
+            license_no="衛署藥製字第049056號",
+            name_zh="賽諾膜衣錠",
+            name_en="XANNA F.C. TABLETS",
+            ingredient="SENNOSIDE",
+        ),
+    ]
+    groups = group_by_ingredient(rows)
+    # Both collapse into a single mono SENNOSIDE group — no ("SENNOSIDE","SENNOSIDE").
+    assert len(groups) == 1
+    assert groups[0].is_mono is True
+    assert groups[0].components == ("SENNOSIDE",)
+    assert len(groups[0].licenses) == 2  # noqa: PLR2004
 
 
 # --- group_by_ingredient(): grouping, sorting, counts -----------------------
