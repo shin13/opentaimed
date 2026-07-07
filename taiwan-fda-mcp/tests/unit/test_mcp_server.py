@@ -75,11 +75,16 @@ async def test_health_endpoint_returns_ok():
 
 
 @pytest.mark.asyncio
-async def test_lists_three_tools():
+async def test_lists_all_tools():
     async with Client(mcp) as client:
         tools = await client.list_tools()
     names = {t.name for t in tools}
-    assert names == {"search_drugs", "get_package_insert", "check_insert_updates"}
+    assert names == {
+        "search_drugs",
+        "search_by_ingredient",
+        "get_package_insert",
+        "check_insert_updates",
+    }
 
 
 @pytest.mark.asyncio

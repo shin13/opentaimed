@@ -84,6 +84,68 @@ class SearchDrugsResponse(BaseModel):
     error: ErrorInfo | None = Field(default=None, description="Null on success.")
 
 
+class IngredientGroup(BaseModel):
+    """Licenses sharing one identical 主成分略述 signature.
+
+    Signature = 主成分略述 split on ';;' then sorted, VERBATIM (salt intact, no
+    normalization). 'AMLODIPINE BESYLATE' and 'AMLODIPINE BESILATE' therefore
+    form DISTINCT groups — the wrapper never decides salt-form equivalence, it
+    only reports how TFDA registered each license.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    components: list[str] = Field(
+        description="Sorted raw 主成分 components, salt intact. len==1 ⇒ 單方 (mono)."
+    )
+    is_mono: bool = Field(
+        description="True iff single-ingredient (主成分略述 contained no ';;' delimiter)."
+    )
+    count: int = Field(description="Distinct licenses in this group, BEFORE per-group truncation.")
+    returned: int = Field(description="Number of licenses actually in `licenses`.")
+    truncated: bool = Field(description="True iff count > returned.")
+    licenses: list[DrugLicenseRow] = Field(
+        default_factory=list,
+        description="Authority-sorted (import/原廠 first) then name_zh; capped per group.",
+    )
+
+
+class SearchByIngredientResponse(BaseModel):
+    """Response shape for ingredient-scoped search — groups hits by 主成分略述.
+
+    Splits the matched licenses into single-ingredient (單方) and combination
+    (複方) groups keyed by verbatim ingredient signature, so a caller sees at a
+    glance how many pure-ingredient products exist versus which fixed-dose
+    combinations, then picks a `license_no` to pass to `get_package_insert`.
+    """
+
+    ingredient: str = Field(description="Echo of the ingredient term the caller searched.")
+    total_matched: int = Field(
+        description="Distinct licenses whose 主成分略述 contains the term (pre-truncation)."
+    )
+    mono_count: int = Field(description="Distinct 單方 licenses across all is_mono groups.")
+    combo_count: int = Field(description="Distinct 複方 licenses across all combo groups.")
+    group_count: int = Field(description="Number of distinct signature groups (pre-truncation).")
+    groups: list[IngredientGroup] = Field(
+        default_factory=list,
+        description="One per signature. Sorted 單方-first (is_mono desc), then count desc, then components.",
+    )
+    dataset_retrieved_at: str | None = Field(
+        default=None, description="ISO 8601 UTC time the search index (Dataset 37) was last loaded."
+    )
+    dataset_age_hours: float | None = Field(
+        default=None, description="Age of the search index in hours at response time."
+    )
+    is_stale: bool = Field(
+        default=False,
+        description="True if the search index is older than its TTL; results still served from cache.",
+    )
+    attribution: Attribution | None = Field(
+        default=None, description="Origin metadata — official data vs third-party wrapper."
+    )
+    error: ErrorInfo | None = Field(default=None, description="Null on success.")
+
+
 class UnknownFieldInfo(BaseModel):
     """One unknown field-name entry — annotated with closest valid match."""
 
@@ -385,7 +447,9 @@ __all__ = [
     "FactoryEntity",
     "GetPackageInsertResponse",
     "ImageRef",
+    "IngredientGroup",
     "InsertVersionInfo",
+    "SearchByIngredientResponse",
     "SearchDrugsResponse",
     "SectionTocEntry",
     "UnknownFieldInfo",

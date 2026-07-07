@@ -32,6 +32,8 @@ from taiwan_fda_mcp.sources.opendata.dataset37 import (
     load_from_cache,
     write_to_cache,
 )
+from taiwan_fda_mcp.sources.opendata.ingredient import group_by_ingredient
+from taiwan_fda_mcp.sources.opendata.search import LicenseGroup
 from taiwan_fda_mcp.sources.opendata.search import search_drugs as _search
 from taiwan_fda_mcp.tool_responses import (
     AdditionalSection,
@@ -44,7 +46,9 @@ from taiwan_fda_mcp.tool_responses import (
     FactoryEntity,
     GetPackageInsertResponse,
     ImageRef,
+    IngredientGroup,
     InsertVersionInfo,
+    SearchByIngredientResponse,
     SearchDrugsResponse,
     SectionTocEntry,
     UnknownFieldInfo,
@@ -389,6 +393,93 @@ async def search_drugs(
         dataset_retrieved_at=retrieved_at,
         dataset_age_hours=age_hours,
         is_stale=is_stale,
+        error=None,
+    )
+
+
+def _license_row(group: LicenseGroup) -> DrugLicenseRow:
+    """Map an internal collapsed LicenseGroup to the public DrugLicenseRow shape."""
+    lic = group.license
+    return DrugLicenseRow(
+        license_no=lic.license_no,
+        name_zh=lic.name_zh,
+        name_en=lic.name_en,
+        ingredient=lic.ingredient,
+        form=lic.form,
+        manufacturers=group.manufacturers,
+        applicant=lic.applicant,
+        drug_class=lic.drug_class,
+        country=lic.country,
+    )
+
+
+async def search_by_ingredient(
+    ingredient: str,
+    *,
+    limit_per_group: int = 10,
+    settings: Settings | None = None,
+) -> SearchByIngredientResponse:
+    """Search Dataset 37 by active ingredient, grouping hits by 主成分略述 signature.
+
+    Filters licenses whose 主成分略述 contains `ingredient` (case-insensitive
+    substring), then groups them by verbatim signature: 單方 (no ';;') vs 複方
+    (';;'-joined), with salt forms preserved (no normalization). See
+    `SearchByIngredientResponse`.
+    """
+    s = settings or get_settings()
+    ingredient = ingredient.strip()
+    if not ingredient:
+        return SearchByIngredientResponse(
+            ingredient=ingredient,
+            total_matched=0,
+            mono_count=0,
+            combo_count=0,
+            group_count=0,
+            groups=[],
+            error=ErrorInfo(
+                code=RCode.SEARCH_NO_CRITERIA.name,
+                message="Provide an ingredient term to search.",
+            ),
+        )
+
+    licenses = await _load_or_refresh_licenses(s)
+    retrieved_at, age_hours, is_stale = _dataset_freshness(s)
+
+    needle = ingredient.lower()
+    matched = [lic for lic in licenses if needle in lic.ingredient.lower()]
+
+    groups: list[IngredientGroup] = []
+    mono_count = 0
+    combo_count = 0
+    for sig_group in group_by_ingredient(matched):
+        count = len(sig_group.licenses)
+        if sig_group.is_mono:
+            mono_count += count
+        else:
+            combo_count += count
+        kept = sig_group.licenses[:limit_per_group]
+        groups.append(
+            IngredientGroup(
+                components=list(sig_group.components),
+                is_mono=sig_group.is_mono,
+                count=count,
+                returned=len(kept),
+                truncated=count > len(kept),
+                licenses=[_license_row(m) for m in kept],
+            )
+        )
+
+    return SearchByIngredientResponse(
+        ingredient=ingredient,
+        total_matched=mono_count + combo_count,
+        mono_count=mono_count,
+        combo_count=combo_count,
+        group_count=len(groups),
+        groups=groups,
+        dataset_retrieved_at=retrieved_at,
+        dataset_age_hours=age_hours,
+        is_stale=is_stale,
+        attribution=_ATTRIBUTION,
         error=None,
     )
 

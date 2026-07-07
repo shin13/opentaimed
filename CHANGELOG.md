@@ -7,6 +7,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- **`search_by_ingredient` tool** — lists every Taiwan FDA license for an active
+  ingredient, grouped into single-ingredient (單方) vs combination (複方) products
+  by verbatim 主成分略述 signature. Splitting is on `;;` only (empirically the sole
+  real combination delimiter in Dataset 37 — `+` and `,` occur only inside single
+  chemical names), and salt forms are preserved exactly, so `AMLODIPINE BESYLATE`
+  and `AMLODIPINE BESILATE` form distinct groups: the wrapper reports how TFDA
+  registered each license and never decides salt-form equivalence. Response
+  carries `total_matched`, `mono_count`, `combo_count`, `group_count`, and
+  `groups` (each with `components`, `is_mono`, `count`, and a `limit_per_group`-
+  truncated `licenses` list); groups sort 單方-first then by descending count.
+
 ## [0.4.0] — 2026-07-02
 
 ### Added
