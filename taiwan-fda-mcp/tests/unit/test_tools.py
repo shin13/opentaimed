@@ -883,12 +883,12 @@ async def test_otc_toc_lists_stable_parent_sections(seeded_settings, fixtures_di
     assert toc.get("3.1", {}).get("field_name") is None
 
 
-# --- SWR refresh (stale-while-revalidate, ADR-0009) ---------------------------
+# --- Over-TTL blocking refresh (ADR-0012, supersedes ADR-0009 SWR) ------------
 
 
 @pytest.mark.asyncio
-async def test_stale_memo_serves_stale_and_schedules_refresh(monkeypatch, tmp_path):
-    """A stale memo is returned immediately AND a background refresh is scheduled."""
+async def test_stale_memo_blocks_and_serves_fresh_no_background(monkeypatch, tmp_path):
+    """A stale memo blocks on an inline refresh, serves FRESH, schedules no retry."""
     fetched = {"n": 0}
 
     async def fake_fetch(base_url, **_kwargs):
@@ -903,15 +903,15 @@ async def test_stale_memo_serves_stale_and_schedules_refresh(monkeypatch, tmp_pa
 
     out = await _tools_mod._load_or_refresh_licenses(s)
 
-    assert out == ["stale"]  # served stale immediately — did NOT block on the fetch
-    assert _tools_mod._REFRESH_TASK is not None  # background refresh was scheduled
-    await _tools_mod._REFRESH_TASK
-    assert fetched["n"] == 1
+    assert out == []  # served the freshly-fetched data, NOT the stale memo
+    assert fetched["n"] == 1  # blocked on exactly one refresh
+    assert _tools_mod._REFRESH_TASK is None  # success ⇒ no background retry scheduled
+    assert _tools_mod._is_stale(s) is False
 
 
 @pytest.mark.asyncio
-async def test_single_inflight_refresh_guard(monkeypatch, tmp_path):
-    """Two stale calls while a refresh is running spawn only ONE download."""
+async def test_fresh_memo_after_refresh_skips_second_fetch(monkeypatch, tmp_path):
+    """After a stale call refreshes the memo, the next call is served fast (no fetch)."""
     started = {"n": 0}
 
     async def slow_fetch(base_url, **_kwargs):
@@ -925,15 +925,16 @@ async def test_single_inflight_refresh_guard(monkeypatch, tmp_path):
     _tools_mod._LICENSES_LOADED_AT = 0.0
     _tools_mod._REFRESH_TASK = None
 
-    await _tools_mod._load_or_refresh_licenses(s)
-    await _tools_mod._load_or_refresh_licenses(s)  # second stale call, first still running
-    await _tools_mod._REFRESH_TASK
-    assert started["n"] == 1  # guard prevented a duplicate concurrent download
+    await _tools_mod._load_or_refresh_licenses(s)  # blocks, refreshes memo to fresh
+    await _tools_mod._load_or_refresh_licenses(s)  # now fresh → fast path, no fetch
+    assert started["n"] == 1
+    assert _tools_mod._REFRESH_TASK is None
 
 
 @pytest.mark.asyncio
-async def test_background_failure_keeps_stale(monkeypatch, tmp_path):
-    """A failed background refresh leaves the stale memo intact and never raises."""
+async def test_blocking_failure_serves_stale_and_schedules_background(monkeypatch, tmp_path):
+    """On refresh failure: serve the stale memo (is_stale stays), schedule a bg retry."""
+    monkeypatch.setattr(_tools_mod, "_BACKGROUND_REFRESH_BACKOFF_SECONDS", 0.0)
 
     async def boom(*a, **k):
         raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
@@ -947,13 +948,14 @@ async def test_background_failure_keeps_stale(monkeypatch, tmp_path):
     out = await _tools_mod._load_or_refresh_licenses(s)
 
     assert out == ["old"]  # served stale, no raise
+    assert _tools_mod._REFRESH_TASK is not None  # background retry scheduled on failure
     await _tools_mod._REFRESH_TASK
-    assert _tools_mod._LICENSES_CACHE == ["old"]  # failed refresh kept the stale memo
+    assert _tools_mod._LICENSES_CACHE == ["old"]  # exhausted retries kept the stale memo
 
 
 @pytest.mark.asyncio
-async def test_cold_start_stale_disk_serves_then_refreshes(monkeypatch, tmp_path):
-    """Cold start with a stale on-disk cache serves it and schedules a refresh."""
+async def test_cold_start_stale_disk_blocks_to_fresh(monkeypatch, tmp_path):
+    """Cold start with a stale on-disk cache loads it, then blocks to refresh fresh."""
     fetched = {"n": 0}
 
     async def fake_fetch(base_url, **_kwargs):
@@ -970,10 +972,10 @@ async def test_cold_start_stale_disk_serves_then_refreshes(monkeypatch, tmp_path
 
     out = await _tools_mod._load_or_refresh_licenses(s)  # cold start (memo is None)
 
-    assert out == []  # served disk cache immediately
-    assert _tools_mod._REFRESH_TASK is not None  # stale disk → refresh scheduled
-    await _tools_mod._REFRESH_TASK
-    assert fetched["n"] == 1
+    assert out == []  # served the refreshed data
+    assert fetched["n"] == 1  # stale disk → one blocking refresh
+    assert _tools_mod._REFRESH_TASK is None  # success ⇒ no background retry
+    assert _tools_mod._is_stale(s) is False
 
 
 @pytest.mark.asyncio
@@ -995,6 +997,7 @@ async def test_search_response_is_stale_when_serving_stale(monkeypatch, tmp_path
         raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
 
     monkeypatch.setattr(_tools_mod, "fetch_dataset37", boom)
+    monkeypatch.setattr(_tools_mod, "_BACKGROUND_REFRESH_BACKOFF_SECONDS", 0.0)
     s = make_settings(cache_dir=tmp_path, ttl_hours=0)  # any age reads as stale
     _tools_mod._LICENSES_CACHE = []
     _tools_mod._LICENSES_LOADED_AT = 0.0
@@ -1169,3 +1172,47 @@ async def test_blocking_refresh_failure_keeps_memo(seeded_settings, monkeypatch)
     assert ok is False
     assert _tools_mod._LICENSES_CACHE is prior  # unchanged
     assert _tools_mod._is_stale(seeded_settings) is True  # loaded_at untouched
+
+
+@pytest.mark.asyncio
+async def test_fresh_memo_serves_without_fetch(seeded_settings, monkeypatch):
+    _tools_mod._LICENSES_CACHE = []
+    _tools_mod._LICENSES_LOADED_AT = time.time()  # fresh
+
+    async def _must_not_fetch(*a, **k):
+        raise AssertionError("fetch_dataset37 must not be called on the fast path")
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _must_not_fetch)
+    out = await _tools_mod._load_or_refresh_licenses(seeded_settings)
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_stale_memo_blocks_then_serves_fresh(seeded_settings, monkeypatch):
+    _seed_stale_memo(["OLD"])
+    fresh = ["NEW"]
+    calls = 0
+
+    async def _fake_fetch(base_url, *, timeout, rate_limit_interval):
+        nonlocal calls
+        calls += 1
+        return fresh
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _fake_fetch)
+    monkeypatch.setattr(_tools_mod, "write_to_cache", lambda rows, cache_dir: None)
+    out = await _tools_mod._load_or_refresh_licenses(seeded_settings)
+    assert out is fresh
+    assert calls == 1
+    assert _tools_mod._is_stale(seeded_settings) is False
+
+
+@pytest.mark.asyncio
+async def test_no_disk_first_run_failure_raises(tmp_path, monkeypatch):
+    settings = make_settings(cache_dir=tmp_path / "empty-ds37")  # no cache file
+
+    async def _boom(*a, **k):
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _boom)
+    with pytest.raises(DatasetFetchError):
+        await _tools_mod._load_or_refresh_licenses(settings)

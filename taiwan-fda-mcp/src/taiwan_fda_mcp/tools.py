@@ -277,19 +277,54 @@ async def _blocking_refresh(settings: Settings) -> bool:
 
 
 async def _load_or_refresh_licenses(settings: Settings) -> list[DrugLicense]:
-    """Return Dataset 37 rows, refreshing in the background when stale (SWR).
+    """Return Dataset 37 rows under an over-TTL BLOCKING refresh policy (ADR-0012).
 
-    Cold start blocks once (disk cache, else a single download). After that a
-    stale memo is served immediately while a single background task refreshes
-    it — queries never block on the network mid-agent-turn. Implements ADR-0009.
+    Fast path: a fresh memo is served with no lock and no fetch. A stale memo (or
+    an unloaded one) is refreshed under a single-flight lock: one blocking attempt
+    bounded by DATASET37_REFRESH_TIMEOUT_SECONDS. Success serves fresh data;
+    timeout/failure serves the last-good snapshot (is_stale=True) and schedules a
+    background retry. True first run with no disk cache blocks once and raises on
+    failure (nothing to serve).
     """
-    if _LICENSES_CACHE is None:
-        return await _cold_start(settings)
+    # Fast path — fresh memo, no lock, no network.
+    if _LICENSES_CACHE is not None and not _is_stale(settings):
+        return _LICENSES_CACHE
 
-    ttl_seconds = settings.DATASET37_TTL_HOURS * 3600
-    if _LICENSES_LOADED_AT is None or (time.time() - _LICENSES_LOADED_AT) >= ttl_seconds:
-        _trigger_background_refresh(settings)  # serve stale now; refresh in background
-    return _LICENSES_CACHE
+    async with _get_refresh_lock():
+        # Re-check under the lock: a concurrent caller may have just refreshed.
+        if _LICENSES_CACHE is not None and not _is_stale(settings):
+            return _LICENSES_CACHE
+        if _LICENSES_CACHE is None:
+            await _ensure_loaded(settings)  # populate from disk, or block-download once (may raise)
+            if not _is_stale(settings):
+                return _LICENSES_CACHE  # disk was fresh, or first-run download succeeded
+        # Memo present but stale → one blocking refresh attempt.
+        if await _blocking_refresh(settings):
+            return _LICENSES_CACHE
+        stale = _LICENSES_CACHE  # capture before releasing the lock
+
+    # Blocking refresh failed → serve stale + background retry (outside the lock).
+    _trigger_background_refresh(settings)
+    assert stale is not None  # _ensure_loaded either populated the memo or raised
+    return stale
+
+
+async def _ensure_loaded(settings: Settings) -> None:
+    """Populate the memo on first use: prefer the disk cache, else block-download once.
+
+    A stale disk cache is loaded as-is (the caller then applies the freshness
+    policy). A truly first run with no disk cache blocks on one refresh and RAISES
+    on failure — distinct from the stale-memo path, which degrades to serving
+    stale. Caller MUST hold the refresh lock.
+    """
+    global _LICENSES_CACHE, _LICENSES_LOADED_AT
+    disk = load_from_cache(settings.DATASET37_CACHE_DIR)
+    if disk is not None:
+        _LICENSES_CACHE = disk
+        _LICENSES_LOADED_AT = cache_mtime(settings.DATASET37_CACHE_DIR)  # real on-disk age
+        return
+    if not await _blocking_refresh(settings):
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "Dataset 37 unavailable on first run")
 
 
 async def _refresh_into_memo(settings: Settings) -> None:
@@ -343,24 +378,6 @@ def _dataset_freshness(settings: Settings) -> tuple[str | None, float | None, bo
     retrieved_at = datetime.fromtimestamp(_LICENSES_LOADED_AT, UTC).isoformat()
     is_stale = age_hours >= settings.DATASET37_TTL_HOURS
     return retrieved_at, age_hours, is_stale
-
-
-async def _cold_start(settings: Settings) -> list[DrugLicense]:
-    """First load this process: serve disk cache (refresh if stale) else download once."""
-    global _LICENSES_CACHE, _LICENSES_LOADED_AT
-    disk = load_from_cache(settings.DATASET37_CACHE_DIR)  # None if absent
-    if disk is not None:
-        _LICENSES_CACHE = disk
-        _LICENSES_LOADED_AT = cache_mtime(settings.DATASET37_CACHE_DIR)  # real on-disk age
-        ttl_seconds = settings.DATASET37_TTL_HOURS * 3600
-        if _LICENSES_LOADED_AT is None or (time.time() - _LICENSES_LOADED_AT) >= ttl_seconds:
-            _trigger_background_refresh(settings)  # stale disk → serve + refresh, no block
-        return disk
-
-    await _refresh_into_memo(settings)  # truly first run → block once
-    if _LICENSES_CACHE is None:
-        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "Dataset 37 unavailable on first run")
-    return _LICENSES_CACHE
 
 
 async def search_drugs(
