@@ -18,7 +18,11 @@ from taiwan_fda_mcp.exceptions import DatasetFetchError, RCode
 from taiwan_fda_mcp.models import DrugInsert
 from taiwan_fda_mcp.sources.insert.cache import get_insert_cache
 from taiwan_fda_mcp.sources.insert.throttle import get_insert_throttle
-from taiwan_fda_mcp.sources.opendata.dataset37 import parse_rows, write_to_cache
+from taiwan_fda_mcp.sources.opendata.dataset37 import (
+    load_from_cache,
+    parse_rows,
+    write_to_cache,
+)
 from taiwan_fda_mcp.tool_responses import GetPackageInsertResponse
 from taiwan_fda_mcp.tools import (
     check_insert_updates,
@@ -1144,8 +1148,8 @@ async def test_is_stale_reflects_loaded_at(seeded_settings):
 async def test_blocking_refresh_success_updates_memo(seeded_settings, monkeypatch):
     sentinel = ["ROWS"]
 
-    async def _fake_fetch(base_url, *, timeout, rate_limit_interval):
-        assert timeout == seeded_settings.DATASET37_REFRESH_TIMEOUT_SECONDS
+    async def _fake_fetch(base_url, **_kwargs):
+        assert _kwargs["timeout"] == seeded_settings.DATASET37_REFRESH_TIMEOUT_SECONDS
         return sentinel
 
     monkeypatch.setattr(_tools_mod, "fetch_dataset37", _fake_fetch)
@@ -1164,7 +1168,7 @@ async def test_blocking_refresh_failure_keeps_memo(seeded_settings, monkeypatch)
     _tools_mod._LICENSES_CACHE = prior
     _tools_mod._LICENSES_LOADED_AT = time.time() - 25 * 3600
 
-    async def _boom(base_url, *, timeout, rate_limit_interval):
+    async def _boom(base_url, **_kwargs):
         raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
 
     monkeypatch.setattr(_tools_mod, "fetch_dataset37", _boom)
@@ -1193,7 +1197,7 @@ async def test_stale_memo_blocks_then_serves_fresh(seeded_settings, monkeypatch)
     fresh = ["NEW"]
     calls = 0
 
-    async def _fake_fetch(base_url, *, timeout, rate_limit_interval):
+    async def _fake_fetch(base_url, **_kwargs):
         nonlocal calls
         calls += 1
         return fresh
@@ -1221,8 +1225,6 @@ async def test_no_disk_first_run_failure_raises(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_blocking_timeout_serves_stale_and_labels(seeded_settings, monkeypatch):
     """On refresh failure the search serves the stale snapshot with is_stale=True."""
-    from taiwan_fda_mcp.sources.opendata.dataset37 import load_from_cache
-
     monkeypatch.setattr(_tools_mod, "_BACKGROUND_REFRESH_BACKOFF_SECONDS", 0.0)
     # Seed a stale memo from the real fixture so the search matches something.
     _tools_mod._LICENSES_CACHE = load_from_cache(seeded_settings.DATASET37_CACHE_DIR)
@@ -1246,7 +1248,7 @@ async def test_concurrent_stale_callers_fetch_once(seeded_settings, monkeypatch)
     _seed_stale_memo(["OLD"])
     calls = 0
 
-    async def _slow_fetch(base_url, *, timeout, rate_limit_interval):
+    async def _slow_fetch(base_url, **_kwargs):
         nonlocal calls
         calls += 1
         await asyncio.sleep(0.05)  # widen the race window
@@ -1268,16 +1270,16 @@ async def test_background_refresh_retries_until_success(seeded_settings, monkeyp
     _seed_stale_memo(["OLD"])
     attempts = 0
 
-    async def _fail_then_succeed(base_url, *, timeout, rate_limit_interval):
+    async def _fail_then_succeed(base_url, **_kwargs):
         nonlocal attempts
         attempts += 1
-        if attempts < 2:
+        if attempts < 2:  # noqa: PLR2004
             raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "transient")
         return ["NEW"]
 
     monkeypatch.setattr(_tools_mod, "fetch_dataset37", _fail_then_succeed)
     monkeypatch.setattr(_tools_mod, "write_to_cache", lambda rows, cache_dir: None)
     await _tools_mod._refresh_into_memo(seeded_settings)
-    assert attempts == 2
+    assert attempts == 2  # noqa: PLR2004
     assert _tools_mod._LICENSES_CACHE == ["NEW"]
     assert _tools_mod._is_stale(seeded_settings) is False

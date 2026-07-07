@@ -287,20 +287,25 @@ async def _load_or_refresh_licenses(settings: Settings) -> list[DrugLicense]:
     failure (nothing to serve).
     """
     # Fast path — fresh memo, no lock, no network.
-    if _LICENSES_CACHE is not None and not _is_stale(settings):
-        return _LICENSES_CACHE
+    cached = _LICENSES_CACHE
+    if cached is not None and not _is_stale(settings):
+        return cached
 
     async with _get_refresh_lock():
         # Re-check under the lock: a concurrent caller may have just refreshed.
-        if _LICENSES_CACHE is not None and not _is_stale(settings):
-            return _LICENSES_CACHE
-        if _LICENSES_CACHE is None:
+        cached = _LICENSES_CACHE
+        if cached is not None and not _is_stale(settings):
+            return cached
+        if cached is None:
             await _ensure_loaded(settings)  # populate from disk, or block-download once (may raise)
-            if not _is_stale(settings):
-                return _LICENSES_CACHE  # disk was fresh, or first-run download succeeded
+            loaded = _LICENSES_CACHE
+            if loaded is not None and not _is_stale(settings):
+                return loaded  # disk was fresh, or first-run download succeeded
         # Memo present but stale → one blocking refresh attempt.
         if await _blocking_refresh(settings):
-            return _LICENSES_CACHE
+            fresh = _LICENSES_CACHE
+            assert fresh is not None  # a successful refresh sets the memo
+            return fresh
         stale = _LICENSES_CACHE  # capture before releasing the lock
 
     # Blocking refresh failed → serve stale + background retry (outside the lock).
