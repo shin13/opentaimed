@@ -58,12 +58,33 @@ from taiwan_fda_mcp.tool_responses import (
 _logger = logging.getLogger(__name__)
 
 # Process-level memo for Dataset 37 — the stdio MCP server is long-running, so
-# we avoid re-parsing 26K rows on every tool call. TTL-aware stale-while-revalidate
-# (ADR-0009): once warm, a stale memo is served immediately while a single
-# background task refreshes it, so a tool call never blocks on the download.
+# we avoid re-parsing 26K rows on every tool call. Over-TTL BLOCKING refresh
+# (ADR-0012, supersedes ADR-0009's stale-while-revalidate): a stale call blocks
+# on one bounded refresh and serves fresh; on failure it serves the last-good
+# snapshot (is_stale=True) and retries in the background.
 _LICENSES_CACHE: list[DrugLicense] | None = None
 _LICENSES_LOADED_AT: float | None = None
 _REFRESH_TASK: "asyncio.Task[None] | None" = None
+
+# Lazily-created single-flight refresh lock. Created on first use (not at import)
+# so it binds to the running loop, mirroring the insert-cache / throttle
+# singletons. Reset alongside the memo globals in tests.
+_REFRESH_LOCK: "asyncio.Lock | None" = None
+
+# Background failure-retry policy (ADR-0012): after a foreground blocking refresh
+# fails, keep trying so the NEXT call is fresh. Backoff is monkeypatched to 0 in
+# tests. The single-in-flight guard in _trigger_background_refresh caps this to
+# one running retry chain regardless of how many calls failed.
+_BACKGROUND_REFRESH_RETRIES: int = 3
+_BACKGROUND_REFRESH_BACKOFF_SECONDS: float = 2.0
+
+
+def _get_refresh_lock() -> "asyncio.Lock":
+    """Return the process-wide refresh lock, creating it on first use."""
+    global _REFRESH_LOCK
+    if _REFRESH_LOCK is None:
+        _REFRESH_LOCK = asyncio.Lock()
+    return _REFRESH_LOCK
 
 
 # Independent project disclaimer — surfaced in every get_package_insert response
@@ -222,6 +243,37 @@ _OTC_CATEGORIES: frozenset[str] = frozenset(
         "醫師藥師藥劑生指示藥品",
     }
 )
+
+
+def _is_stale(settings: Settings) -> bool:
+    """True iff the memo is unloaded or older than DATASET37_TTL_HOURS."""
+    if _LICENSES_LOADED_AT is None:
+        return True
+    return (time.time() - _LICENSES_LOADED_AT) >= settings.DATASET37_TTL_HOURS * 3600
+
+
+async def _blocking_refresh(settings: Settings) -> bool:
+    """One refresh attempt, bounded by DATASET37_REFRESH_TIMEOUT_SECONDS.
+
+    Returns True and swaps the memo (+ disk cache) on success; returns False on
+    timeout/HTTP/parse failure, leaving the memo and its timestamp untouched (so
+    `is_stale` stays true). Callers MUST hold the refresh lock — this function
+    does not acquire it, so foreground and background writes never race.
+    """
+    global _LICENSES_CACHE, _LICENSES_LOADED_AT
+    try:
+        rows = await fetch_dataset37(
+            settings.FDA_OPENDATA_BASE_URL,
+            timeout=settings.DATASET37_REFRESH_TIMEOUT_SECONDS,
+            rate_limit_interval=settings.FDA_RATE_LIMIT_INTERVAL_SECONDS,
+        )
+    except DatasetFetchError:
+        _logger.warning("dataset37.blocking_refresh.failed")  # keep stale; caller decides fallback
+        return False
+    write_to_cache(rows, settings.DATASET37_CACHE_DIR)
+    _LICENSES_CACHE, _LICENSES_LOADED_AT = rows, time.time()
+    _logger.info("dataset37.blocking_refresh.done", extra={"count": len(rows)})
+    return True
 
 
 async def _load_or_refresh_licenses(settings: Settings) -> list[DrugLicense]:

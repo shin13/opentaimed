@@ -30,10 +30,11 @@ from taiwan_fda_mcp.tools import (
 
 @pytest.fixture(autouse=True)
 def _reset_module_caches():
-    """Clear tools.py module-level Dataset 37 SWR state between tests."""
+    """Clear tools.py module-level Dataset 37 refresh state between tests."""
     _tools_mod._LICENSES_CACHE = None
     _tools_mod._LICENSES_LOADED_AT = None
     _tools_mod._REFRESH_TASK = None
+    _tools_mod._REFRESH_LOCK = None
 
 
 def make_settings(*, cache_dir: Path, ttl_hours: int = 24) -> Settings:
@@ -1112,3 +1113,59 @@ async def test_check_insert_updates_bypasses_insert_cache(seeded_settings, fixtu
         await check_insert_updates("2025-10-20", today="2025-10-29", settings=settings)
 
     assert len(cache._store) == 0  # the date-sweep path never populated the cache
+
+
+# --- ADR-0012: over-TTL blocking refresh -----------------------------------
+
+
+def _seed_stale_memo(rows):
+    """Put `rows` in the memo with a load time older than the TTL."""
+    _tools_mod._LICENSES_CACHE = rows
+    _tools_mod._LICENSES_LOADED_AT = time.time() - 25 * 3600
+
+
+@pytest.mark.asyncio
+async def test_is_stale_reflects_loaded_at(seeded_settings):
+    _tools_mod._LICENSES_CACHE = []
+    _tools_mod._LICENSES_LOADED_AT = time.time()
+    assert _tools_mod._is_stale(seeded_settings) is False
+
+    _tools_mod._LICENSES_LOADED_AT = time.time() - 25 * 3600  # older than 24h TTL
+    assert _tools_mod._is_stale(seeded_settings) is True
+
+    _tools_mod._LICENSES_LOADED_AT = None
+    assert _tools_mod._is_stale(seeded_settings) is True  # never loaded ⇒ stale
+
+
+@pytest.mark.asyncio
+async def test_blocking_refresh_success_updates_memo(seeded_settings, monkeypatch):
+    sentinel = ["ROWS"]
+
+    async def _fake_fetch(base_url, *, timeout, rate_limit_interval):
+        assert timeout == seeded_settings.DATASET37_REFRESH_TIMEOUT_SECONDS
+        return sentinel
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _fake_fetch)
+    # Sentinel rows aren't real DrugLicense objects — stub the disk write, which
+    # is not what this test exercises (it verifies the memo swap + timeout wiring).
+    monkeypatch.setattr(_tools_mod, "write_to_cache", lambda rows, cache_dir: None)
+    ok = await _tools_mod._blocking_refresh(seeded_settings)
+    assert ok is True
+    assert _tools_mod._LICENSES_CACHE is sentinel
+    assert _tools_mod._is_stale(seeded_settings) is False
+
+
+@pytest.mark.asyncio
+async def test_blocking_refresh_failure_keeps_memo(seeded_settings, monkeypatch):
+    prior = ["OLD"]
+    _tools_mod._LICENSES_CACHE = prior
+    _tools_mod._LICENSES_LOADED_AT = time.time() - 25 * 3600
+
+    async def _boom(base_url, *, timeout, rate_limit_interval):
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _boom)
+    ok = await _tools_mod._blocking_refresh(seeded_settings)
+    assert ok is False
+    assert _tools_mod._LICENSES_CACHE is prior  # unchanged
+    assert _tools_mod._is_stale(seeded_settings) is True  # loaded_at untouched
