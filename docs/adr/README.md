@@ -34,6 +34,7 @@ session-state notes kept in `.private/`.
 | [0006](./0006-flat-response-schema-alignment-with-healthcare-mcp-norms.md) | Flat response schema for `get_package_insert`, aligned with healthcare MCP norms | Accepted |
 | [0007](./0007-rx-otc-dual-format-full-fidelity.md) | Rx/OTC dual-format support with full-fidelity insert return | Accepted |
 | [0008](./0008-multi-field-search-flat-filters.md) | Multi-field `search_drugs` via opendata, with flat AND filters | Accepted |
-| [0009](./0009-distributed-install-data-freshness.md) | Data-freshness strategy for distributed installs | Accepted |
+| [0009](./0009-distributed-install-data-freshness.md) | Data-freshness strategy for distributed installs | Superseded by [0012](./0012-dataset37-over-ttl-blocking-refresh.md) |
 | [0010](./0010-http-transport-hosting-model.md) | HTTP transport and staged hosting model (internal → external) | Accepted (Stage 1) |
 | [0011](./0011-opt-in-package-insert-cache.md) | Opt-in package-insert cache | Accepted |
+| [0012](./0012-dataset37-over-ttl-blocking-refresh.md) | Over-TTL blocking refresh for the Dataset 37 search index | Accepted |

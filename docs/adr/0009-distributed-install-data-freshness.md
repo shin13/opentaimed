@@ -1,10 +1,17 @@
 # ADR-0009: Data-freshness strategy for distributed installs
 
-- **Status**: Accepted
+- **Status**: Superseded
 - **Date**: 2026-05-31
+- **Superseded by**: [ADR-0012](./0012-dataset37-over-ttl-blocking-refresh.md)
 - **Extends**: [ADR-0001](./0001-tfda-dual-api-strategy.md) (dual-API), [ADR-0003](./0003-search-via-dataset37-not-lmspiq.md) (search via opendata), [ADR-0008](./0008-multi-field-search-flat-filters.md) (multi-field search)
 
 ## Context
+
+> **Superseded by [ADR-0012](./0012-dataset37-over-ttl-blocking-refresh.md)
+> (2026-07-07):** live measurement showed the Dataset 37 download is sub-second,
+> so the stale-while-revalidate default below was replaced by over-TTL blocking
+> refresh. SWR's machinery is retained only as the failure-fallback path.
+
 
 The primary distribution profile is **self-hosted by each end user**: a
 developer installs the package (git clone, or `uvx` once published) and points
