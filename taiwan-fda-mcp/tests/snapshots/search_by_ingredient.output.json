@@ -1,0 +1,232 @@
+{
+  "description": "Response shape for ingredient-scoped search — groups hits by 主成分略述.\n\nSplits the matched licenses into single-ingredient (單方) and combination\n(複方) groups keyed by verbatim ingredient signature, so a caller sees at a\nglance how many pure-ingredient products exist versus which fixed-dose\ncombinations, then picks a `license_no` to pass to `get_package_insert`.",
+  "properties": {
+    "attribution": {
+      "anyOf": [
+        {
+          "description": "Per-response attribution — distinguishes official data from third-party wrapper.",
+          "properties": {
+            "data_official": {
+              "description": "True iff `data_source` is a government/official body.",
+              "type": "boolean"
+            },
+            "data_source": {
+              "description": "Authoritative data origin.",
+              "type": "string"
+            },
+            "wrapper": {
+              "description": "Identity of the (third-party) MCP server returning this response.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "data_source",
+            "data_official",
+            "wrapper"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Origin metadata — official data vs third-party wrapper."
+    },
+    "combo_count": {
+      "description": "Distinct 複方 licenses across all combo groups.",
+      "type": "integer"
+    },
+    "dataset_age_hours": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Age of the search index in hours at response time."
+    },
+    "dataset_retrieved_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO 8601 UTC time the search index (Dataset 37) was last loaded."
+    },
+    "error": {
+      "anyOf": [
+        {
+          "description": "Structured error block. `code` is the RCode name (string form, stable identifier).",
+          "properties": {
+            "code": {
+              "description": "Stable error code identifier (e.g. 'INSERT_NOT_FOUND').",
+              "type": "string"
+            },
+            "message": {
+              "description": "Human-readable error message in Traditional Chinese or English.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Null on success."
+    },
+    "group_count": {
+      "description": "Number of distinct signature groups (pre-truncation).",
+      "type": "integer"
+    },
+    "groups": {
+      "description": "One per signature. Sorted 單方-first (is_mono desc), then count desc, then components.",
+      "items": {
+        "description": "Licenses sharing one identical 主成分略述 signature.\n\nSignature = 主成分略述 split on ';;' then sorted, VERBATIM (salt intact, no\nnormalization). 'AMLODIPINE BESYLATE' and 'AMLODIPINE BESILATE' therefore\nform DISTINCT groups — the wrapper never decides salt-form equivalence, it\nonly reports how TFDA registered each license.",
+        "properties": {
+          "components": {
+            "description": "Sorted raw 主成分 components, salt intact. len==1 ⇒ 單方 (mono).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "count": {
+            "description": "Distinct licenses in this group, BEFORE per-group truncation.",
+            "type": "integer"
+          },
+          "is_mono": {
+            "description": "True iff single-ingredient (主成分略述 contained no ';;' delimiter).",
+            "type": "boolean"
+          },
+          "licenses": {
+            "description": "Authority-sorted (import/原廠 first) then name_zh; capped per group.",
+            "items": {
+              "description": "Public-facing license row in search results.\n\nNarrower than the internal `models.DrugLicense` — only fields suitable\nfor downstream consumption are exposed.",
+              "properties": {
+                "applicant": {
+                  "description": "申請商.",
+                  "type": "string"
+                },
+                "country": {
+                  "default": "",
+                  "description": "製造廠國別 (manufacturing-site country).",
+                  "type": "string"
+                },
+                "drug_class": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "藥品類別 (may be null)."
+                },
+                "form": {
+                  "description": "劑型.",
+                  "type": "string"
+                },
+                "ingredient": {
+                  "description": "主成分略述.",
+                  "type": "string"
+                },
+                "license_no": {
+                  "description": "許可證字號 (e.g. 衛署藥輸字第021571號).",
+                  "type": "string"
+                },
+                "manufacturers": {
+                  "description": "All registered 製造商 for this license (collapsed from duplicate rows).",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "name_en": {
+                  "description": "英文品名.",
+                  "type": "string"
+                },
+                "name_zh": {
+                  "description": "中文品名.",
+                  "type": "string"
+                },
+                "status": {
+                  "default": "有效",
+                  "description": "Dataset 37 = 未註銷, so always 有效 in MVP.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "license_no",
+                "name_zh",
+                "name_en",
+                "ingredient",
+                "form",
+                "applicant"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "returned": {
+            "description": "Number of licenses actually in `licenses`.",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "True iff count > returned.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "components",
+          "is_mono",
+          "count",
+          "returned",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "ingredient": {
+      "description": "Echo of the ingredient term the caller searched.",
+      "type": "string"
+    },
+    "is_stale": {
+      "default": false,
+      "description": "True if the search index is older than its TTL; results still served from cache.",
+      "type": "boolean"
+    },
+    "mono_count": {
+      "description": "Distinct 單方 licenses across all is_mono groups.",
+      "type": "integer"
+    },
+    "total_matched": {
+      "description": "Distinct licenses whose 主成分略述 contains the term (pre-truncation).",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "ingredient",
+    "total_matched",
+    "mono_count",
+    "combo_count",
+    "group_count"
+  ],
+  "type": "object"
+}

@@ -1,5 +1,5 @@
 # path: tests/unit/test_mcp_schemas.py
-# brief: Snapshot tests freezing the MCP input/output JSON schemas for all 3 tools.
+# brief: Snapshot tests freezing the MCP input/output JSON schemas for all tools.
 #
 # These tests serve as the contract between this server and its LLM clients.
 # A schema change — even something subtle like a docstring rewording — breaks
@@ -22,7 +22,12 @@ from taiwan_fda_mcp.mcp_server import mcp
 _SNAPSHOTS_DIR = Path(__file__).parent.parent / "snapshots"
 _UPDATE = os.environ.get("UPDATE_SNAPSHOTS") == "1"
 
-TOOL_NAMES = ["search_drugs", "get_package_insert", "check_insert_updates"]
+TOOL_NAMES = [
+    "search_drugs",
+    "search_by_ingredient",
+    "get_package_insert",
+    "check_insert_updates",
+]
 
 
 async def _fetch_schemas() -> dict[str, dict[str, dict | None]]:
