@@ -327,20 +327,31 @@ async def _ensure_loaded(settings: Settings) -> None:
         raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "Dataset 37 unavailable on first run")
 
 
-async def _refresh_into_memo(settings: Settings) -> None:
-    """Fetch Dataset 37 and replace the memo + disk cache; keep stale on failure."""
-    global _LICENSES_CACHE, _LICENSES_LOADED_AT
-    try:
-        rows = await fetch_dataset37(
-            settings.FDA_OPENDATA_BASE_URL,
-            rate_limit_interval=settings.FDA_RATE_LIMIT_INTERVAL_SECONDS,
-        )
-    except DatasetFetchError:
-        _logger.warning("dataset37.refresh.failed")  # keep stale memo; retry next call
-        return
-    write_to_cache(rows, settings.DATASET37_CACHE_DIR)
-    _LICENSES_CACHE, _LICENSES_LOADED_AT = rows, time.time()
-    _logger.info("dataset37.refresh.done", extra={"count": len(rows)})
+async def _refresh_into_memo(
+    settings: Settings,
+    *,
+    retries: int | None = None,
+    backoff: float | None = None,
+) -> None:
+    """Background failure-fallback: retry a blocking refresh up to `retries` times.
+
+    Each attempt runs under the single-flight lock so it never races a foreground
+    refresh; the backoff sleep happens OUTSIDE the lock so a waiting foreground
+    caller can take it between attempts. Bails early if a foreground caller has
+    already refreshed the memo. Keeps the stale memo if all attempts fail.
+    """
+    retries = _BACKGROUND_REFRESH_RETRIES if retries is None else retries
+    backoff = _BACKGROUND_REFRESH_BACKOFF_SECONDS if backoff is None else backoff
+    for attempt in range(1, retries + 1):
+        async with _get_refresh_lock():
+            if not _is_stale(settings):
+                return  # a foreground call refreshed while we waited/backed off
+            if await _blocking_refresh(settings):
+                return
+        _logger.warning("dataset37.background_refresh.attempt_failed", extra={"attempt": attempt})
+        if attempt < retries:
+            await asyncio.sleep(backoff * attempt)
+    _logger.warning("dataset37.background_refresh.exhausted", extra={"retries": retries})
 
 
 def _trigger_background_refresh(settings: Settings) -> None:
@@ -370,7 +381,8 @@ def _dataset_freshness(settings: Settings) -> tuple[str | None, float | None, bo
     """Derive (retrieved_at ISO, age_hours, is_stale) for the currently-served memo.
 
     Read after `_load_or_refresh_licenses` so `_LICENSES_LOADED_AT` reflects the
-    age of the data actually returned (SWR serves stale before a refresh lands).
+    age of the data actually returned. Under ADR-0012, `is_stale=True` here means
+    the served snapshot is past its TTL AND a live refresh could not complete.
     """
     if _LICENSES_LOADED_AT is None:
         return None, None, False
