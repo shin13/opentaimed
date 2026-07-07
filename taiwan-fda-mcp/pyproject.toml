@@ -1,6 +1,6 @@
 [project]
 name = "taiwan-fda-mcp"
-version = "0.5.0"
+version = "0.6.0"
 description = "MCP server exposing Taiwan FDA (TFDA) drug-license and package-insert data to LLM clients. Independent open-source wrapper; not a TFDA product."
 readme = "README.md"
 authors = [

@@ -44,7 +44,7 @@ If yes, the layer count is right.
 opentaimed/                    # the public monorepo
 ├── docs/
 │   └── adr/                   # architecture decision records (durable why)
-├── taiwan-fda-mcp/            # shipped — v0.5.0 MCP server (only current subproject)
+├── taiwan-fda-mcp/            # shipped — v0.6.0 MCP server (only current subproject)
 │   ├── src/taiwan_fda_mcp/
 │   └── tests/
 ├── .github/workflows/         # CI (least-privilege)
