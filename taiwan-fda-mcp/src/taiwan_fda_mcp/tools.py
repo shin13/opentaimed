@@ -58,12 +58,33 @@ from taiwan_fda_mcp.tool_responses import (
 _logger = logging.getLogger(__name__)
 
 # Process-level memo for Dataset 37 — the stdio MCP server is long-running, so
-# we avoid re-parsing 26K rows on every tool call. TTL-aware stale-while-revalidate
-# (ADR-0009): once warm, a stale memo is served immediately while a single
-# background task refreshes it, so a tool call never blocks on the download.
+# we avoid re-parsing 26K rows on every tool call. Over-TTL BLOCKING refresh
+# (ADR-0012, supersedes ADR-0009's stale-while-revalidate): a stale call blocks
+# on one bounded refresh and serves fresh; on failure it serves the last-good
+# snapshot (is_stale=True) and retries in the background.
 _LICENSES_CACHE: list[DrugLicense] | None = None
 _LICENSES_LOADED_AT: float | None = None
 _REFRESH_TASK: "asyncio.Task[None] | None" = None
+
+# Lazily-created single-flight refresh lock. Created on first use (not at import)
+# so it binds to the running loop, mirroring the insert-cache / throttle
+# singletons. Reset alongside the memo globals in tests.
+_REFRESH_LOCK: "asyncio.Lock | None" = None
+
+# Background failure-retry policy (ADR-0012): after a foreground blocking refresh
+# fails, keep trying so the NEXT call is fresh. Backoff is monkeypatched to 0 in
+# tests. The single-in-flight guard in _trigger_background_refresh caps this to
+# one running retry chain regardless of how many calls failed.
+_BACKGROUND_REFRESH_RETRIES: int = 3
+_BACKGROUND_REFRESH_BACKOFF_SECONDS: float = 2.0
+
+
+def _get_refresh_lock() -> "asyncio.Lock":
+    """Return the process-wide refresh lock, creating it on first use."""
+    global _REFRESH_LOCK
+    if _REFRESH_LOCK is None:
+        _REFRESH_LOCK = asyncio.Lock()
+    return _REFRESH_LOCK
 
 
 # Independent project disclaimer — surfaced in every get_package_insert response
@@ -224,36 +245,118 @@ _OTC_CATEGORIES: frozenset[str] = frozenset(
 )
 
 
-async def _load_or_refresh_licenses(settings: Settings) -> list[DrugLicense]:
-    """Return Dataset 37 rows, refreshing in the background when stale (SWR).
+def _is_stale(settings: Settings) -> bool:
+    """True iff the memo is unloaded or older than DATASET37_TTL_HOURS."""
+    if _LICENSES_LOADED_AT is None:
+        return True
+    return (time.time() - _LICENSES_LOADED_AT) >= settings.DATASET37_TTL_HOURS * 3600
 
-    Cold start blocks once (disk cache, else a single download). After that a
-    stale memo is served immediately while a single background task refreshes
-    it — queries never block on the network mid-agent-turn. Implements ADR-0009.
+
+async def _blocking_refresh(settings: Settings) -> bool:
+    """One refresh attempt, bounded by DATASET37_REFRESH_TIMEOUT_SECONDS.
+
+    Returns True and swaps the memo (+ disk cache) on success; returns False on
+    timeout/HTTP/parse failure, leaving the memo and its timestamp untouched (so
+    `is_stale` stays true). Callers MUST hold the refresh lock — this function
+    does not acquire it, so foreground and background writes never race.
     """
-    if _LICENSES_CACHE is None:
-        return await _cold_start(settings)
-
-    ttl_seconds = settings.DATASET37_TTL_HOURS * 3600
-    if _LICENSES_LOADED_AT is None or (time.time() - _LICENSES_LOADED_AT) >= ttl_seconds:
-        _trigger_background_refresh(settings)  # serve stale now; refresh in background
-    return _LICENSES_CACHE
-
-
-async def _refresh_into_memo(settings: Settings) -> None:
-    """Fetch Dataset 37 and replace the memo + disk cache; keep stale on failure."""
     global _LICENSES_CACHE, _LICENSES_LOADED_AT
     try:
         rows = await fetch_dataset37(
             settings.FDA_OPENDATA_BASE_URL,
+            timeout=settings.DATASET37_REFRESH_TIMEOUT_SECONDS,
             rate_limit_interval=settings.FDA_RATE_LIMIT_INTERVAL_SECONDS,
         )
     except DatasetFetchError:
-        _logger.warning("dataset37.refresh.failed")  # keep stale memo; retry next call
-        return
+        _logger.warning("dataset37.blocking_refresh.failed")  # keep stale; caller decides fallback
+        return False
     write_to_cache(rows, settings.DATASET37_CACHE_DIR)
     _LICENSES_CACHE, _LICENSES_LOADED_AT = rows, time.time()
-    _logger.info("dataset37.refresh.done", extra={"count": len(rows)})
+    _logger.info("dataset37.blocking_refresh.done", extra={"count": len(rows)})
+    return True
+
+
+async def _load_or_refresh_licenses(settings: Settings) -> list[DrugLicense]:
+    """Return Dataset 37 rows under an over-TTL BLOCKING refresh policy (ADR-0012).
+
+    Fast path: a fresh memo is served with no lock and no fetch. A stale memo (or
+    an unloaded one) is refreshed under a single-flight lock: one blocking attempt
+    bounded by DATASET37_REFRESH_TIMEOUT_SECONDS. Success serves fresh data;
+    timeout/failure serves the last-good snapshot (is_stale=True) and schedules a
+    background retry. True first run with no disk cache blocks once and raises on
+    failure (nothing to serve).
+    """
+    # Fast path — fresh memo, no lock, no network.
+    cached = _LICENSES_CACHE
+    if cached is not None and not _is_stale(settings):
+        return cached
+
+    async with _get_refresh_lock():
+        # Re-check under the lock: a concurrent caller may have just refreshed.
+        cached = _LICENSES_CACHE
+        if cached is not None and not _is_stale(settings):
+            return cached
+        if cached is None:
+            await _ensure_loaded(settings)  # populate from disk, or block-download once (may raise)
+            loaded = _LICENSES_CACHE
+            if loaded is not None and not _is_stale(settings):
+                return loaded  # disk was fresh, or first-run download succeeded
+        # Memo present but stale → one blocking refresh attempt.
+        if await _blocking_refresh(settings):
+            fresh = _LICENSES_CACHE
+            assert fresh is not None  # a successful refresh sets the memo
+            return fresh
+        stale = _LICENSES_CACHE  # capture before releasing the lock
+
+    # Blocking refresh failed → serve stale + background retry (outside the lock).
+    _trigger_background_refresh(settings)
+    assert stale is not None  # _ensure_loaded either populated the memo or raised
+    return stale
+
+
+async def _ensure_loaded(settings: Settings) -> None:
+    """Populate the memo on first use: prefer the disk cache, else block-download once.
+
+    A stale disk cache is loaded as-is (the caller then applies the freshness
+    policy). A truly first run with no disk cache blocks on one refresh and RAISES
+    on failure — distinct from the stale-memo path, which degrades to serving
+    stale. Caller MUST hold the refresh lock.
+    """
+    global _LICENSES_CACHE, _LICENSES_LOADED_AT
+    disk = load_from_cache(settings.DATASET37_CACHE_DIR)
+    if disk is not None:
+        _LICENSES_CACHE = disk
+        _LICENSES_LOADED_AT = cache_mtime(settings.DATASET37_CACHE_DIR)  # real on-disk age
+        return
+    if not await _blocking_refresh(settings):
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "Dataset 37 unavailable on first run")
+
+
+async def _refresh_into_memo(
+    settings: Settings,
+    *,
+    retries: int | None = None,
+    backoff: float | None = None,
+) -> None:
+    """Background failure-fallback: retry a blocking refresh up to `retries` times.
+
+    Each attempt runs under the single-flight lock so it never races a foreground
+    refresh; the backoff sleep happens OUTSIDE the lock so a waiting foreground
+    caller can take it between attempts. Bails early if a foreground caller has
+    already refreshed the memo. Keeps the stale memo if all attempts fail.
+    """
+    retries = _BACKGROUND_REFRESH_RETRIES if retries is None else retries
+    backoff = _BACKGROUND_REFRESH_BACKOFF_SECONDS if backoff is None else backoff
+    for attempt in range(1, retries + 1):
+        async with _get_refresh_lock():
+            if not _is_stale(settings):
+                return  # a foreground call refreshed while we waited/backed off
+            if await _blocking_refresh(settings):
+                return
+        _logger.warning("dataset37.background_refresh.attempt_failed", extra={"attempt": attempt})
+        if attempt < retries:
+            await asyncio.sleep(backoff * attempt)
+    _logger.warning("dataset37.background_refresh.exhausted", extra={"retries": retries})
 
 
 def _trigger_background_refresh(settings: Settings) -> None:
@@ -283,7 +386,8 @@ def _dataset_freshness(settings: Settings) -> tuple[str | None, float | None, bo
     """Derive (retrieved_at ISO, age_hours, is_stale) for the currently-served memo.
 
     Read after `_load_or_refresh_licenses` so `_LICENSES_LOADED_AT` reflects the
-    age of the data actually returned (SWR serves stale before a refresh lands).
+    age of the data actually returned. Under ADR-0012, `is_stale=True` here means
+    the served snapshot is past its TTL AND a live refresh could not complete.
     """
     if _LICENSES_LOADED_AT is None:
         return None, None, False
@@ -291,24 +395,6 @@ def _dataset_freshness(settings: Settings) -> tuple[str | None, float | None, bo
     retrieved_at = datetime.fromtimestamp(_LICENSES_LOADED_AT, UTC).isoformat()
     is_stale = age_hours >= settings.DATASET37_TTL_HOURS
     return retrieved_at, age_hours, is_stale
-
-
-async def _cold_start(settings: Settings) -> list[DrugLicense]:
-    """First load this process: serve disk cache (refresh if stale) else download once."""
-    global _LICENSES_CACHE, _LICENSES_LOADED_AT
-    disk = load_from_cache(settings.DATASET37_CACHE_DIR)  # None if absent
-    if disk is not None:
-        _LICENSES_CACHE = disk
-        _LICENSES_LOADED_AT = cache_mtime(settings.DATASET37_CACHE_DIR)  # real on-disk age
-        ttl_seconds = settings.DATASET37_TTL_HOURS * 3600
-        if _LICENSES_LOADED_AT is None or (time.time() - _LICENSES_LOADED_AT) >= ttl_seconds:
-            _trigger_background_refresh(settings)  # stale disk → serve + refresh, no block
-        return disk
-
-    await _refresh_into_memo(settings)  # truly first run → block once
-    if _LICENSES_CACHE is None:
-        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "Dataset 37 unavailable on first run")
-    return _LICENSES_CACHE
 
 
 async def search_drugs(

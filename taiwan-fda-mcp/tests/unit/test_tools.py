@@ -18,7 +18,11 @@ from taiwan_fda_mcp.exceptions import DatasetFetchError, RCode
 from taiwan_fda_mcp.models import DrugInsert
 from taiwan_fda_mcp.sources.insert.cache import get_insert_cache
 from taiwan_fda_mcp.sources.insert.throttle import get_insert_throttle
-from taiwan_fda_mcp.sources.opendata.dataset37 import parse_rows, write_to_cache
+from taiwan_fda_mcp.sources.opendata.dataset37 import (
+    load_from_cache,
+    parse_rows,
+    write_to_cache,
+)
 from taiwan_fda_mcp.tool_responses import GetPackageInsertResponse
 from taiwan_fda_mcp.tools import (
     check_insert_updates,
@@ -30,10 +34,11 @@ from taiwan_fda_mcp.tools import (
 
 @pytest.fixture(autouse=True)
 def _reset_module_caches():
-    """Clear tools.py module-level Dataset 37 SWR state between tests."""
+    """Clear tools.py module-level Dataset 37 refresh state between tests."""
     _tools_mod._LICENSES_CACHE = None
     _tools_mod._LICENSES_LOADED_AT = None
     _tools_mod._REFRESH_TASK = None
+    _tools_mod._REFRESH_LOCK = None
 
 
 def make_settings(*, cache_dir: Path, ttl_hours: int = 24) -> Settings:
@@ -882,12 +887,12 @@ async def test_otc_toc_lists_stable_parent_sections(seeded_settings, fixtures_di
     assert toc.get("3.1", {}).get("field_name") is None
 
 
-# --- SWR refresh (stale-while-revalidate, ADR-0009) ---------------------------
+# --- Over-TTL blocking refresh (ADR-0012, supersedes ADR-0009 SWR) ------------
 
 
 @pytest.mark.asyncio
-async def test_stale_memo_serves_stale_and_schedules_refresh(monkeypatch, tmp_path):
-    """A stale memo is returned immediately AND a background refresh is scheduled."""
+async def test_stale_memo_blocks_and_serves_fresh_no_background(monkeypatch, tmp_path):
+    """A stale memo blocks on an inline refresh, serves FRESH, schedules no retry."""
     fetched = {"n": 0}
 
     async def fake_fetch(base_url, **_kwargs):
@@ -902,15 +907,15 @@ async def test_stale_memo_serves_stale_and_schedules_refresh(monkeypatch, tmp_pa
 
     out = await _tools_mod._load_or_refresh_licenses(s)
 
-    assert out == ["stale"]  # served stale immediately — did NOT block on the fetch
-    assert _tools_mod._REFRESH_TASK is not None  # background refresh was scheduled
-    await _tools_mod._REFRESH_TASK
-    assert fetched["n"] == 1
+    assert out == []  # served the freshly-fetched data, NOT the stale memo
+    assert fetched["n"] == 1  # blocked on exactly one refresh
+    assert _tools_mod._REFRESH_TASK is None  # success ⇒ no background retry scheduled
+    assert _tools_mod._is_stale(s) is False
 
 
 @pytest.mark.asyncio
-async def test_single_inflight_refresh_guard(monkeypatch, tmp_path):
-    """Two stale calls while a refresh is running spawn only ONE download."""
+async def test_fresh_memo_after_refresh_skips_second_fetch(monkeypatch, tmp_path):
+    """After a stale call refreshes the memo, the next call is served fast (no fetch)."""
     started = {"n": 0}
 
     async def slow_fetch(base_url, **_kwargs):
@@ -924,15 +929,16 @@ async def test_single_inflight_refresh_guard(monkeypatch, tmp_path):
     _tools_mod._LICENSES_LOADED_AT = 0.0
     _tools_mod._REFRESH_TASK = None
 
-    await _tools_mod._load_or_refresh_licenses(s)
-    await _tools_mod._load_or_refresh_licenses(s)  # second stale call, first still running
-    await _tools_mod._REFRESH_TASK
-    assert started["n"] == 1  # guard prevented a duplicate concurrent download
+    await _tools_mod._load_or_refresh_licenses(s)  # blocks, refreshes memo to fresh
+    await _tools_mod._load_or_refresh_licenses(s)  # now fresh → fast path, no fetch
+    assert started["n"] == 1
+    assert _tools_mod._REFRESH_TASK is None
 
 
 @pytest.mark.asyncio
-async def test_background_failure_keeps_stale(monkeypatch, tmp_path):
-    """A failed background refresh leaves the stale memo intact and never raises."""
+async def test_blocking_failure_serves_stale_and_schedules_background(monkeypatch, tmp_path):
+    """On refresh failure: serve the stale memo (is_stale stays), schedule a bg retry."""
+    monkeypatch.setattr(_tools_mod, "_BACKGROUND_REFRESH_BACKOFF_SECONDS", 0.0)
 
     async def boom(*a, **k):
         raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
@@ -946,13 +952,14 @@ async def test_background_failure_keeps_stale(monkeypatch, tmp_path):
     out = await _tools_mod._load_or_refresh_licenses(s)
 
     assert out == ["old"]  # served stale, no raise
+    assert _tools_mod._REFRESH_TASK is not None  # background retry scheduled on failure
     await _tools_mod._REFRESH_TASK
-    assert _tools_mod._LICENSES_CACHE == ["old"]  # failed refresh kept the stale memo
+    assert _tools_mod._LICENSES_CACHE == ["old"]  # exhausted retries kept the stale memo
 
 
 @pytest.mark.asyncio
-async def test_cold_start_stale_disk_serves_then_refreshes(monkeypatch, tmp_path):
-    """Cold start with a stale on-disk cache serves it and schedules a refresh."""
+async def test_cold_start_stale_disk_blocks_to_fresh(monkeypatch, tmp_path):
+    """Cold start with a stale on-disk cache loads it, then blocks to refresh fresh."""
     fetched = {"n": 0}
 
     async def fake_fetch(base_url, **_kwargs):
@@ -969,10 +976,10 @@ async def test_cold_start_stale_disk_serves_then_refreshes(monkeypatch, tmp_path
 
     out = await _tools_mod._load_or_refresh_licenses(s)  # cold start (memo is None)
 
-    assert out == []  # served disk cache immediately
-    assert _tools_mod._REFRESH_TASK is not None  # stale disk → refresh scheduled
-    await _tools_mod._REFRESH_TASK
-    assert fetched["n"] == 1
+    assert out == []  # served the refreshed data
+    assert fetched["n"] == 1  # stale disk → one blocking refresh
+    assert _tools_mod._REFRESH_TASK is None  # success ⇒ no background retry
+    assert _tools_mod._is_stale(s) is False
 
 
 @pytest.mark.asyncio
@@ -994,6 +1001,7 @@ async def test_search_response_is_stale_when_serving_stale(monkeypatch, tmp_path
         raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
 
     monkeypatch.setattr(_tools_mod, "fetch_dataset37", boom)
+    monkeypatch.setattr(_tools_mod, "_BACKGROUND_REFRESH_BACKOFF_SECONDS", 0.0)
     s = make_settings(cache_dir=tmp_path, ttl_hours=0)  # any age reads as stale
     _tools_mod._LICENSES_CACHE = []
     _tools_mod._LICENSES_LOADED_AT = 0.0
@@ -1112,3 +1120,166 @@ async def test_check_insert_updates_bypasses_insert_cache(seeded_settings, fixtu
         await check_insert_updates("2025-10-20", today="2025-10-29", settings=settings)
 
     assert len(cache._store) == 0  # the date-sweep path never populated the cache
+
+
+# --- ADR-0012: over-TTL blocking refresh -----------------------------------
+
+
+def _seed_stale_memo(rows):
+    """Put `rows` in the memo with a load time older than the TTL."""
+    _tools_mod._LICENSES_CACHE = rows
+    _tools_mod._LICENSES_LOADED_AT = time.time() - 25 * 3600
+
+
+@pytest.mark.asyncio
+async def test_is_stale_reflects_loaded_at(seeded_settings):
+    _tools_mod._LICENSES_CACHE = []
+    _tools_mod._LICENSES_LOADED_AT = time.time()
+    assert _tools_mod._is_stale(seeded_settings) is False
+
+    _tools_mod._LICENSES_LOADED_AT = time.time() - 25 * 3600  # older than 24h TTL
+    assert _tools_mod._is_stale(seeded_settings) is True
+
+    _tools_mod._LICENSES_LOADED_AT = None
+    assert _tools_mod._is_stale(seeded_settings) is True  # never loaded ⇒ stale
+
+
+@pytest.mark.asyncio
+async def test_blocking_refresh_success_updates_memo(seeded_settings, monkeypatch):
+    sentinel = ["ROWS"]
+
+    async def _fake_fetch(base_url, **_kwargs):
+        assert _kwargs["timeout"] == seeded_settings.DATASET37_REFRESH_TIMEOUT_SECONDS
+        return sentinel
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _fake_fetch)
+    # Sentinel rows aren't real DrugLicense objects — stub the disk write, which
+    # is not what this test exercises (it verifies the memo swap + timeout wiring).
+    monkeypatch.setattr(_tools_mod, "write_to_cache", lambda rows, cache_dir: None)
+    ok = await _tools_mod._blocking_refresh(seeded_settings)
+    assert ok is True
+    assert _tools_mod._LICENSES_CACHE is sentinel
+    assert _tools_mod._is_stale(seeded_settings) is False
+
+
+@pytest.mark.asyncio
+async def test_blocking_refresh_failure_keeps_memo(seeded_settings, monkeypatch):
+    prior = ["OLD"]
+    _tools_mod._LICENSES_CACHE = prior
+    _tools_mod._LICENSES_LOADED_AT = time.time() - 25 * 3600
+
+    async def _boom(base_url, **_kwargs):
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _boom)
+    ok = await _tools_mod._blocking_refresh(seeded_settings)
+    assert ok is False
+    assert _tools_mod._LICENSES_CACHE is prior  # unchanged
+    assert _tools_mod._is_stale(seeded_settings) is True  # loaded_at untouched
+
+
+@pytest.mark.asyncio
+async def test_fresh_memo_serves_without_fetch(seeded_settings, monkeypatch):
+    _tools_mod._LICENSES_CACHE = []
+    _tools_mod._LICENSES_LOADED_AT = time.time()  # fresh
+
+    async def _must_not_fetch(*a, **k):
+        raise AssertionError("fetch_dataset37 must not be called on the fast path")
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _must_not_fetch)
+    out = await _tools_mod._load_or_refresh_licenses(seeded_settings)
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_stale_memo_blocks_then_serves_fresh(seeded_settings, monkeypatch):
+    _seed_stale_memo(["OLD"])
+    fresh = ["NEW"]
+    calls = 0
+
+    async def _fake_fetch(base_url, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return fresh
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _fake_fetch)
+    monkeypatch.setattr(_tools_mod, "write_to_cache", lambda rows, cache_dir: None)
+    out = await _tools_mod._load_or_refresh_licenses(seeded_settings)
+    assert out is fresh
+    assert calls == 1
+    assert _tools_mod._is_stale(seeded_settings) is False
+
+
+@pytest.mark.asyncio
+async def test_no_disk_first_run_failure_raises(tmp_path, monkeypatch):
+    settings = make_settings(cache_dir=tmp_path / "empty-ds37")  # no cache file
+
+    async def _boom(*a, **k):
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _boom)
+    with pytest.raises(DatasetFetchError):
+        await _tools_mod._load_or_refresh_licenses(settings)
+
+
+@pytest.mark.asyncio
+async def test_blocking_timeout_serves_stale_and_labels(seeded_settings, monkeypatch):
+    """On refresh failure the search serves the stale snapshot with is_stale=True."""
+    monkeypatch.setattr(_tools_mod, "_BACKGROUND_REFRESH_BACKOFF_SECONDS", 0.0)
+    # Seed a stale memo from the real fixture so the search matches something.
+    _tools_mod._LICENSES_CACHE = load_from_cache(seeded_settings.DATASET37_CACHE_DIR)
+    _tools_mod._LICENSES_LOADED_AT = time.time() - 25 * 3600
+
+    async def _boom(*a, **k):
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _boom)
+    resp = (await search_drugs(query="脈優", settings=seeded_settings)).model_dump()
+    assert resp["total_matched"] == 1  # served from the stale snapshot
+    assert resp["is_stale"] is True
+    assert resp["dataset_retrieved_at"] is not None
+    if _tools_mod._REFRESH_TASK is not None:  # drain the scheduled background retry
+        await _tools_mod._REFRESH_TASK
+
+
+@pytest.mark.asyncio
+async def test_concurrent_stale_callers_fetch_once(seeded_settings, monkeypatch):
+    """Two concurrent stale calls trigger exactly one download (lock + re-check)."""
+    _seed_stale_memo(["OLD"])
+    calls = 0
+
+    async def _slow_fetch(base_url, **_kwargs):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.05)  # widen the race window
+        return ["NEW"]
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _slow_fetch)
+    monkeypatch.setattr(_tools_mod, "write_to_cache", lambda rows, cache_dir: None)
+    await asyncio.gather(
+        _tools_mod._load_or_refresh_licenses(seeded_settings),
+        _tools_mod._load_or_refresh_licenses(seeded_settings),
+    )
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_background_refresh_retries_until_success(seeded_settings, monkeypatch):
+    """_refresh_into_memo retries up to the cap; a later attempt can succeed."""
+    monkeypatch.setattr(_tools_mod, "_BACKGROUND_REFRESH_BACKOFF_SECONDS", 0.0)
+    _seed_stale_memo(["OLD"])
+    attempts = 0
+
+    async def _fail_then_succeed(base_url, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts < 2:  # noqa: PLR2004
+            raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "transient")
+        return ["NEW"]
+
+    monkeypatch.setattr(_tools_mod, "fetch_dataset37", _fail_then_succeed)
+    monkeypatch.setattr(_tools_mod, "write_to_cache", lambda rows, cache_dir: None)
+    await _tools_mod._refresh_into_memo(seeded_settings)
+    assert attempts == 2  # noqa: PLR2004
+    assert _tools_mod._LICENSES_CACHE == ["NEW"]
+    assert _tools_mod._is_stale(seeded_settings) is False

@@ -77,8 +77,10 @@ class SearchDrugsResponse(BaseModel):
     is_stale: bool = Field(
         default=False,
         description=(
-            "True if the search index is older than its TTL (a background refresh "
-            "is in flight or last failed); results are still served from cache."
+            "True iff the search index is past its TTL AND a live refresh could "
+            "not complete — results are served from the last-good snapshot dated "
+            "`dataset_retrieved_at`, and a background retry is under way. False on "
+            "the normal path (a blocking refresh kept the index current)."
         ),
     )
     error: ErrorInfo | None = Field(default=None, description="Null on success.")
@@ -138,7 +140,12 @@ class SearchByIngredientResponse(BaseModel):
     )
     is_stale: bool = Field(
         default=False,
-        description="True if the search index is older than its TTL; results still served from cache.",
+        description=(
+            "True iff the search index is past its TTL AND a live refresh could "
+            "not complete — results are served from the last-good snapshot dated "
+            "`dataset_retrieved_at`, and a background retry is under way. False on "
+            "the normal path (a blocking refresh kept the index current)."
+        ),
     )
     attribution: Attribution | None = Field(
         default=None, description="Origin metadata — official data vs third-party wrapper."

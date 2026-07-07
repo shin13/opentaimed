@@ -7,6 +7,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+- **Dataset 37 search index now uses over-TTL blocking refresh** (ADR-0012,
+  supersedes ADR-0009). A query past `DATASET37_TTL_HOURS` (24) blocks on one
+  bounded refresh (new `DATASET37_REFRESH_TIMEOUT_SECONDS`, default 15 s) and
+  serves fresh data; on timeout/failure it serves the last-good snapshot with
+  `is_stale=True` and retries in the background (≤3). A single-flight lock means
+  concurrent stale callers trigger one download. Live measurement showed the
+  download is sub-second, so the freshest-data default costs <1 s in practice
+  while removing the stale-by-default window. `is_stale=True` now means precisely
+  "past TTL and a live refresh could not complete." No response-schema shape
+  change (only the `is_stale` description tightened).
+
 ## [0.5.0] — 2026-07-07
 
 ### Added
