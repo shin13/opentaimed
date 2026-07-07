@@ -14,6 +14,7 @@ from taiwan_fda_mcp.resources import OTC_INSERT_STRUCTURE_MD, RX_INSERT_STRUCTUR
 from taiwan_fda_mcp.tool_responses import (
     CheckInsertUpdatesResponse,
     GetPackageInsertResponse,
+    SearchByIngredientResponse,
     SearchDrugsResponse,
 )
 from taiwan_fda_mcp.tools import (
@@ -21,6 +22,9 @@ from taiwan_fda_mcp.tools import (
 )
 from taiwan_fda_mcp.tools import (
     get_package_insert as _get_package_insert,
+)
+from taiwan_fda_mcp.tools import (
+    search_by_ingredient as _search_by_ingredient,
 )
 from taiwan_fda_mcp.tools import (
     search_drugs as _search_drugs,
@@ -74,6 +78,13 @@ mcp: FastMCP = FastMCP(
         "  3. Cite via source_url / human_url + section + last_update_date\n"
         "  4. Tell the end user: data quoted from TFDA, accessed via the "
         "independent open-source MCP server `taiwan-fda-mcp` (NOT a TFDA product).\n\n"
+        "**Ingredient-scoped lookup:** When the user asks which products contain "
+        "an active ingredient, or wants single-ingredient (單方) vs combination "
+        "(複方) products for one ingredient, call `search_by_ingredient(ingredient)` "
+        "instead of search_drugs — it groups licenses by 主成分略述. Salt-form "
+        "spellings (BESYLATE vs BESILATE) form distinct groups by design; do NOT "
+        "tell the user they are the same drug — report the groups as returned. Then "
+        "pick a license_no from a group and continue with get_package_insert.\n\n"
         "**Black box warning (special_warning):** When this field is non-empty, "
         "you MUST quote its content verbatim in any response that mentions "
         "warnings or contraindications. Do NOT paraphrase, summarise, or merge "
@@ -163,6 +174,41 @@ async def search_drugs(
         drug_class=drug_class,
         country=country,
         limit=limit,
+    )
+
+
+@mcp.tool
+async def search_by_ingredient(
+    ingredient: str,
+    limit_per_group: int = 10,
+) -> SearchByIngredientResponse:
+    """List all Taiwan FDA licenses for an active ingredient, grouped 單方 vs 複方.
+
+    Use this (instead of `search_drugs`) when the user asks "which products
+    contain ingredient X", "show me all the amlodipine products", or wants to
+    compare single-ingredient vs fixed-dose-combination products for one active
+    ingredient. Then pick a `license_no` from a group and call `get_package_insert`.
+
+    Licenses are matched by case-insensitive substring on 主成分略述, then grouped
+    by verbatim ingredient signature. Grouping is faithful to how TFDA registers
+    each license: components are split on ';;' only, and salt forms are preserved
+    exactly — 'AMLODIPINE BESYLATE' and 'AMLODIPINE BESILATE' are DISTINCT groups.
+    The wrapper never decides salt-form equivalence.
+
+    Args:
+        ingredient: active-ingredient substring (e.g. "amlodipine", "valsartan").
+        limit_per_group: max licenses listed within each group (default 10). The
+            group's true size is always reported in `count`.
+
+    Returns:
+        SearchByIngredientResponse — `total_matched`, `mono_count`, `combo_count`,
+        `group_count`, and `groups` (each with `components`, `is_mono`, `count`,
+        and a truncated `licenses` list). Groups are sorted 單方-first, then by
+        descending license count. `error` is set only when `ingredient` is blank.
+    """
+    return await _search_by_ingredient(
+        ingredient=ingredient,
+        limit_per_group=limit_per_group,
     )
 
 

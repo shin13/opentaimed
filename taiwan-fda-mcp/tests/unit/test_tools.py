@@ -23,6 +23,7 @@ from taiwan_fda_mcp.tool_responses import GetPackageInsertResponse
 from taiwan_fda_mcp.tools import (
     check_insert_updates,
     get_package_insert,
+    search_by_ingredient,
     search_drugs,
 )
 
@@ -92,6 +93,63 @@ async def test_search_drugs_signals_truncation(seeded_settings):
     if response["total_matched"] > 1:
         assert response["truncated"] is True
         assert response["returned"] == 1
+
+
+@pytest.fixture
+def ingredient_seeded_settings(tmp_path: Path, fixtures_dir: Path) -> Settings:
+    """Settings seeded with the richer ingredient fixture (mono + combo rows)."""
+    raw = json.loads(
+        (fixtures_dir / "dataset37_ingredient_sample.json").read_text(encoding="utf-8")
+    )
+    cache_dir = tmp_path / "ds37"
+    write_to_cache(parse_rows(raw), cache_dir)
+    return Settings(  # type: ignore[call-arg]
+        DATASET37_CACHE_DIR=cache_dir,
+        DATASET37_TTL_HOURS=24,
+        FDA_RATE_LIMIT_INTERVAL_SECONDS=0.0,
+        INSERT_THROTTLE_MIN_INTERVAL_SECONDS=0.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_by_ingredient_groups_mono_and_combo(ingredient_seeded_settings):
+    """Full orchestrator path: disk cache → filter → group → Pydantic response."""
+    resp = await search_by_ingredient("amlodipine", settings=ingredient_seeded_settings)
+    assert resp.error is None
+    assert resp.total_matched == 7  # noqa: PLR2004  distinct amlodipine licenses
+    assert resp.mono_count == 3  # noqa: PLR2004
+    assert resp.combo_count == 4  # noqa: PLR2004
+    # 單方 groups sort first.
+    first_combo = next(i for i, g in enumerate(resp.groups) if not g.is_mono)
+    assert all(resp.groups[i].is_mono for i in range(first_combo))
+    # besylate/besilate stay distinct combo groups (deliberate 假分裂).
+    combo_sigs = {tuple(g.components) for g in resp.groups if not g.is_mono}
+    assert ("AMLODIPINE BESYLATE", "VALSARTAN") in combo_sigs
+    assert ("AMLODIPINE BESILATE", "VALSARTAN") in combo_sigs
+    # Attribution is surfaced (third-party wrapper disclosure).
+    assert resp.attribution is not None
+
+
+@pytest.mark.asyncio
+async def test_search_by_ingredient_per_group_truncation(ingredient_seeded_settings):
+    """limit_per_group caps licenses within a group but count reports the true size."""
+    resp = await search_by_ingredient(
+        "amlodipine", limit_per_group=1, settings=ingredient_seeded_settings
+    )
+    val = next(
+        g for g in resp.groups if tuple(g.components) == ("AMLODIPINE BESYLATE", "VALSARTAN")
+    )
+    assert val.count == 2  # noqa: PLR2004  true group size preserved
+    assert val.returned == 1
+    assert val.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_search_by_ingredient_blank_is_error(ingredient_seeded_settings):
+    resp = await search_by_ingredient("   ", settings=ingredient_seeded_settings)
+    assert resp.error is not None
+    assert resp.error.code == RCode.SEARCH_NO_CRITERIA.name
+    assert resp.groups == []
 
 
 @pytest.mark.asyncio

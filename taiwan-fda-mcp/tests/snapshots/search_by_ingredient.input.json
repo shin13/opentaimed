@@ -1,0 +1,18 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "ingredient": {
+      "description": "active-ingredient substring (e.g. \"amlodipine\", \"valsartan\").",
+      "type": "string"
+    },
+    "limit_per_group": {
+      "default": 10,
+      "description": "max licenses listed within each group (default 10). The\ngroup's true size is always reported in `count`.",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "ingredient"
+  ],
+  "type": "object"
+}
