@@ -73,6 +73,16 @@ def test_insert_cache_rejects_zero_max_entries(monkeypatch):
         Settings()
 
 
+def test_dataset37_refresh_timeout_default_and_validation():
+    """Blocking-refresh timeout (ADR-0012): default 15s, must be > 0."""
+    # Assert the field default directly so a local .env cannot affect the result.
+    assert Settings.model_fields["DATASET37_REFRESH_TIMEOUT_SECONDS"].default == 15.0  # noqa: PLR2004
+    # A non-positive blocking timeout would make every refresh "time out"
+    # instantly and always serve stale — fail at load, not mid-request.
+    with pytest.raises(ValidationError):
+        Settings(DATASET37_REFRESH_TIMEOUT_SECONDS=0.0)  # type: ignore[call-arg]
+
+
 def test_transport_defaults_to_stdio():
     # Assert the field default directly so a local .env cannot affect the result.
     assert Settings.model_fields["MCP_TRANSPORT"].default == "stdio"

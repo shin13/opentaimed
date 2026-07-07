@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     )
     DATASET37_TTL_HOURS: int = 24
 
+    # Blocking-refresh timeout (ADR-0012): the per-attempt ceiling for a
+    # foreground/background Dataset 37 re-download. Normal download is <1s
+    # (measured); 15s is a safety margin for slow / proxied links. On timeout
+    # the call serves the last-good snapshot (is_stale=True). Must be > 0.
+    DATASET37_REFRESH_TIMEOUT_SECONDS: float = Field(default=15.0, gt=0)
+
     LOG_LEVEL: str = "INFO"
 
     # --- Transport (ADR-0010): stdio for individual `uvx` use (default),
