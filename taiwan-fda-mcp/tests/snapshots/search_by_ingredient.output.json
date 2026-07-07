@@ -209,7 +209,7 @@
     },
     "is_stale": {
       "default": false,
-      "description": "True if the search index is older than its TTL; results still served from cache.",
+      "description": "True iff the search index is past its TTL AND a live refresh could not complete — results are served from the last-good snapshot dated `dataset_retrieved_at`, and a background retry is under way. False on the normal path (a blocking refresh kept the index current).",
       "type": "boolean"
     },
     "mono_count": {
