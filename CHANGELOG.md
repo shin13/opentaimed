@@ -7,6 +7,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-07
+
 ### Added
 - **`search_by_ingredient` tool** — lists every Taiwan FDA license for an active
   ingredient, grouped into single-ingredient (單方) vs combination (複方) products

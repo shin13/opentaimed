@@ -27,10 +27,12 @@ answers — with a link to the source.
 
 ## What can it do?
 
-It adds three tools to your assistant:
+It adds four tools to your assistant:
 
 - **`search_drugs`** — find a drug by Chinese/English name, ingredient,
   indication, maker, and more.
+- **`search_by_ingredient`** — list every license for an active ingredient,
+  grouped into single-ingredient (單方) vs combination (複方) products.
 - **`get_package_insert`** — read the official 仿單 of one drug license
   (indications, dosage, warnings, side effects…), with a source link.
 - **`check_insert_updates`** — list inserts updated since a given date.
@@ -71,7 +73,7 @@ uv run taiwan-fda-mcp
 ## How to use it (connect your AI agent)
 
 Add the server to your client's config, restart it, then just ask a drug
-question in Chinese. The three tools appear automatically.
+question in Chinese. The four tools appear automatically.
 
 **Claude Code**
 
@@ -154,9 +156,10 @@ docker compose up -d --build
 
 ### 可以做什麼?
 
-它幫你的助理加上三個工具:
+它幫你的助理加上四個工具:
 
 - **`search_drugs`** — 用中／英文藥名、成分、適應症、製造商等條件找藥。
+- **`search_by_ingredient`** — 列出某成分的所有藥證,依單方／複方分組。
 - **`get_package_insert`** — 讀某一張藥證的官方仿單(適應症、用法用量、警語、副作用…),附出處連結。
 - **`check_insert_updates`** — 列出某日期之後更新過的仿單。
 
@@ -193,7 +196,7 @@ uv run taiwan-fda-mcp
 
 ### 裝好之後怎麼用(連到你的 AI 代理人)
 
-把 server 加進你工具的設定檔,重新啟動,然後直接用中文問藥物問題,三個工具會自動出現。
+把 server 加進你工具的設定檔,重新啟動,然後直接用中文問藥物問題,四個工具會自動出現。
 
 **Claude Code**
 
