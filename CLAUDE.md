@@ -242,8 +242,15 @@ Current:
 - `.github/workflows/gitleaks.yml` — gitleaks secret-scan. Runs on
   push, every PR, and a weekly scheduled full-history baseline scan
   (Monday 18:00 UTC = Tuesday 02:00 Taipei).
-- Both workflows declare `permissions: contents: read` — least-privilege
-  token, cannot push or publish.
+- `.github/workflows/smoke.yml` — daily live smoke test (`pytest -m smoke`,
+  18:00 UTC = 02:00 Taipei) against the real TFDA APIs, to catch upstream
+  contract drift within hours; a separate `alert` job dedup-files a GitHub
+  issue on failure.
+- `.github/workflows/audit.yml` — weekly `pip-audit` of the locked runtime
+  deps (Monday 19:00 UTC), complementing Dependabot; same dedup-issue alert.
+- Every workflow defaults to `permissions: contents: read` (least-privilege);
+  only the `smoke`/`audit` `alert` jobs elevate to `issues: write`, using the
+  native `GITHUB_TOKEN` (no external secret).
 - `.pre-commit-config.yaml` wires gitleaks as a local pre-commit hook.
   Contributors run `pre-commit install` once after clone; on macOS
   Tahoe, install pre-commit via `uv tool install pre-commit` rather
@@ -256,8 +263,9 @@ No bypass list, including admin.
 
 Planned:
 
-- Dependency audit (`pip-audit` or similar) on a weekly schedule.
-- Dependabot for minor / patch dep upgrades.
+- Dependabot *scheduled version-update* PRs (needs `.github/dependabot.yml`).
+  Note: Dependabot *security* updates are already active — they land the
+  `chore(deps)` CVE-fix PRs today; only routine version bumps are outstanding.
 - Pinned actions by commit SHA rather than version tag.
 
 ## Source Expansion Pattern
