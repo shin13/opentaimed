@@ -1,0 +1,66 @@
+name: audit
+
+# Weekly dependency CVE scan. Complements Dependabot: Dependabot opens
+# version-bump PRs; pip-audit flags known CVEs in the exact *locked* runtime
+# set. Runtime deps only (--no-dev): test/lint deps do not ship to users.
+
+on:
+  schedule:
+    - cron: "0 19 * * 1"   # Monday 19:00 UTC = Tuesday 03:00 Asia/Taipei
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: taiwan-fda-mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: taiwan-fda-mcp/uv.lock
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Export locked runtime dependencies
+        run: uv export --frozen --no-dev --no-emit-project -o requirements.txt
+
+      - name: Audit (pip-audit)
+        run: uvx pip-audit -r requirements.txt
+
+  alert:
+    name: file failure issue
+    needs: audit
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Dedup-file a dependency-cve issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LABEL: dependency-cve
+          DESC: "Weekly pip-audit found a known CVE"
+          TITLE: "pip-audit: known CVE in a locked dependency"
+          BODY: "The weekly `pip-audit` run flagged a known vulnerability in the locked runtime dependencies. Review the run log, then bump the dependency (or add a justified --ignore-vuln to audit.yml)."
+        run: |
+          set -euo pipefail
+          gh label create "$LABEL" -R "$REPO" --color B60205 --description "$DESC" --force
+          existing=$(gh issue list -R "$REPO" --label "$LABEL" --state open --json number -q '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" -R "$REPO" --body "Flagged again on $(date -u +%Y-%m-%d). Run: $RUN_URL"
+          else
+            gh issue create -R "$REPO" --label "$LABEL" --title "$TITLE" --body "$BODY"$'\n\n'"Run: $RUN_URL"
+          fi

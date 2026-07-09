@@ -13,6 +13,7 @@
 #  so we exclude contents with /docs/* instead of the dir itself.)
 /docs/*
 !/docs/adr/
+!/docs/security-review-*.md
 # .private/ is an independent nested git repository for private session state
 # (STATE.md, TODO.md, etc.). The outer repo MUST NOT track it at all.
 /.private/
@@ -112,3 +113,4 @@ coverage/
 test-results/
 playwright-report/
 playwright/.cache/
+.playwright-mcp/

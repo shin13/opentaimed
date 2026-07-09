@@ -7,6 +7,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- CI: daily live TFDA smoke test (`smoke.yml`) and weekly `pip-audit` dependency
+  CVE scan (`audit.yml`), each auto-filing a deduped GitHub issue on failure.
+
+### Security
+- Lightweight v1 security review (`docs/security-review-2026-07.md`) walking the
+  10 CLAUDE.md security invariants against the shipped read-only surface.
+
 ## [0.6.0] — 2026-07-07
 
 ### Changed
