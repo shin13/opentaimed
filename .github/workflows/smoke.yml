@@ -1,0 +1,80 @@
+name: smoke
+
+# Daily live smoke test against the real TFDA APIs. FDA contract drift (a
+# renamed field, a dropped section, a moved license number) propagates into LLM
+# citations within hours, so this runs daily rather than weekly. The `smoke`
+# job reads code + calls the public FDA APIs; only the `alert` job may write
+# issues.
+
+on:
+  schedule:
+    - cron: "0 18 * * *"   # 18:00 UTC daily = 02:00 Asia/Taipei
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: "Force the smoke job to fail (to validate the alert path)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: live smoke (-m smoke)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: taiwan-fda-mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: taiwan-fda-mcp/uv.lock
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Live smoke tests
+        env:
+          SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
+        run: |
+          if [ "$SIMULATE_FAILURE" = "true" ]; then
+            echo "simulate_failure=true -> forcing failure to validate the alert path"
+            exit 1
+          fi
+          uv run pytest -m smoke -v
+
+  alert:
+    name: file failure issue
+    needs: smoke
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Dedup-file a smoke-failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LABEL: smoke-failure
+          DESC: "Daily TFDA live smoke test failed"
+          TITLE: "Daily TFDA smoke test failing"
+          BODY: "The daily live smoke test (`pytest -m smoke`) failed. This usually means TFDA changed a field, dropped a section, or a pinned license number moved — investigate before trusting insert citations."
+        run: |
+          set -euo pipefail
+          gh label create "$LABEL" -R "$REPO" --color B60205 --description "$DESC" --force
+          existing=$(gh issue list -R "$REPO" --label "$LABEL" --state open --json number -q '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" -R "$REPO" --body "Failed again on $(date -u +%Y-%m-%d). Run: $RUN_URL"
+          else
+            gh issue create -R "$REPO" --label "$LABEL" --title "$TITLE" --body "$BODY"$'\n\n'"Run: $RUN_URL"
+          fi
