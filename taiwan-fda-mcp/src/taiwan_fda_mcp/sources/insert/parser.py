@@ -135,32 +135,56 @@ _EXT_MIME: dict[str, str] = {
 }
 
 
+# Magic-byte signatures — used when a `<VALUE type="image">` omits BOTH
+# `mimetype` and `filename` (observed live: 脈優 §1 性狀, 2026-07-17).
+_MAGIC_MIME: list[tuple[bytes, str]] = [
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"BM", "image/bmp"),
+]
+
+
+def _sniff_mime(decoded: bytes) -> str | None:
+    """Return an image MIME from leading magic bytes, or None if unrecognised."""
+    if decoded[:4] == b"RIFF" and decoded[8:12] == b"WEBP":
+        return "image/webp"
+    for signature, mime in _MAGIC_MIME:
+        if decoded.startswith(signature):
+            return mime
+    return None
+
+
 def _parse_image(value_el: ET.Element) -> InsertImage:
     """Build an InsertImage from a `<VALUE type="image" encode="1">` element."""
     data = (value_el.text or "").strip()
     try:
-        size_bytes = len(base64.b64decode(data, validate=True)) if data else 0
+        decoded = base64.b64decode(data, validate=True) if data else b""
     except (binascii.Error, ValueError):
-        size_bytes = 0
+        decoded = b""
     return InsertImage(
-        mime=_image_mime(value_el),
-        size_bytes=size_bytes,
+        mime=_image_mime(value_el, decoded),
+        size_bytes=len(decoded),
         data=data,
     )
 
 
-def _image_mime(value_el: ET.Element) -> str:
-    """Resolve an image MIME type: explicit `mimetype` → filename extension → octet-stream.
+def _image_mime(value_el: ET.Element, decoded: bytes) -> str:
+    """Resolve an image MIME: explicit `mimetype` → filename ext → magic bytes → octet-stream.
 
-    TFDA usually sets `mimetype`, but some inserts omit it; without a fallback
-    the wrapper would emit a malformed `data:;base64,...` URL.
+    TFDA usually sets `mimetype`, but some inserts omit both it and `filename`
+    (only `encode="1"`); without magic-byte sniffing the wrapper would emit a
+    non-rendering `data:application/octet-stream;base64,...` URL.
     """
     mime = (value_el.get("mimetype") or "").strip()
     if mime:
         return mime
     filename = (value_el.get("filename") or "").strip()
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    return _EXT_MIME.get(ext, "application/octet-stream")
+    if ext in _EXT_MIME:
+        return _EXT_MIME[ext]
+    return _sniff_mime(decoded) or "application/octet-stream"
 
 
 def _parse_entities(
