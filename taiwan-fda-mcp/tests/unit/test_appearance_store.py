@@ -68,5 +68,6 @@ async def test_freshness_reports_loaded(tmp_path):
     await store.get_index(s)
     retrieved_at, age_hours, is_stale = store.freshness(s)
     assert retrieved_at is not None
-    assert age_hours is not None and age_hours >= 0
+    assert age_hours is not None
+    assert age_hours >= 0
     assert is_stale is False

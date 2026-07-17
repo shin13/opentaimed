@@ -9,7 +9,7 @@ import time
 from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from taiwan_fda_mcp.config import Settings, get_settings
 from taiwan_fda_mcp.exceptions import (
@@ -26,6 +26,7 @@ from taiwan_fda_mcp.sources.insert.client import fetch_drug_insert, fetch_drug_i
 from taiwan_fda_mcp.sources.insert.html_text import html_to_text
 from taiwan_fda_mcp.sources.insert.throttle import InsertEgressThrottle, get_insert_throttle
 from taiwan_fda_mcp.sources.license_code import license_str_to_code
+from taiwan_fda_mcp.sources.opendata.appearance_store import get_appearance_store
 from taiwan_fda_mcp.sources.opendata.client import fetch_dataset37
 from taiwan_fda_mcp.sources.opendata.dataset37 import (
     cache_mtime,
@@ -44,6 +45,7 @@ from taiwan_fda_mcp.tool_responses import (
     DrugLicenseRow,
     ErrorInfo,
     FactoryEntity,
+    GetDrugAppearanceResponse,
     GetPackageInsertResponse,
     ImageRef,
     IngredientGroup,
@@ -94,6 +96,22 @@ _ATTRIBUTION = Attribution(
     data_official=True,
     wrapper="taiwan-fda-mcp (independent open-source project, NOT a TFDA product)",
 )
+
+# Dataset 42 (drug appearance) — export URL cited in every response, and the
+# only host from which appearance image URLs are accepted (G4 hardening).
+_DATASET42_EXPORT_PATH = "/data/opendata/export/42/json"
+_APPEARANCE_IMAGE_HOST = "mcp.fda.gov.tw"
+
+
+def _validated_image_url(raw: str) -> str | None:
+    """Return the URL only if it is https on the expected TFDA host (G4 hardening)."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw)
+    if parsed.scheme == "https" and parsed.netloc == _APPEARANCE_IMAGE_HOST:
+        return raw
+    return None
 
 
 # Pre-section fields sourced from top-level <WARNING> / <CHARACT> XML elements —
@@ -567,6 +585,61 @@ async def search_by_ingredient(
         is_stale=is_stale,
         attribution=_ATTRIBUTION,
         error=None,
+    )
+
+
+async def get_drug_appearance(
+    license_no: str,
+    *,
+    settings: Settings | None = None,
+) -> GetDrugAppearanceResponse:
+    """Return TFDA Dataset 42 appearance for one license (forward-only, URL passthrough)."""
+    s = settings or get_settings()
+    store = get_appearance_store()
+    try:
+        index = await store.get_index(s)
+    except DatasetFetchError as exc:
+        return GetDrugAppearanceResponse(
+            license_no=license_no,
+            appearance_on_file=False,
+            error=ErrorInfo(code=exc.code.name, message=exc.message),
+            attribution=_ATTRIBUTION,
+        )
+
+    retrieved_at, age_hours, is_stale = store.freshness(s)
+    source_url = f"{s.FDA_OPENDATA_BASE_URL.rstrip('/')}{_DATASET42_EXPORT_PATH}"
+    row = index.get(license_no.strip())
+
+    if row is None:
+        return GetDrugAppearanceResponse(
+            license_no=license_no,
+            appearance_on_file=False,
+            source_url=source_url,
+            dataset_retrieved_at=retrieved_at,
+            dataset_age_hours=age_hours,
+            is_stale=is_stale,
+            attribution=_ATTRIBUTION,
+        )
+
+    return GetDrugAppearanceResponse(
+        license_no=license_no,
+        appearance_on_file=True,
+        name_zh=row.name_zh,
+        name_en=row.name_en,
+        shape=row.shape,
+        color=row.color,
+        special_dosage_form=row.special_dosage_form,
+        odor=row.odor,
+        score_line=row.score_line,
+        dimensions=row.dimensions,
+        imprint_1=row.imprint_1,
+        imprint_2=row.imprint_2,
+        image_url=_validated_image_url(row.image_url),
+        source_url=source_url,
+        dataset_retrieved_at=retrieved_at,
+        dataset_age_hours=age_hours,
+        is_stale=is_stale,
+        attribution=_ATTRIBUTION,
     )
 
 

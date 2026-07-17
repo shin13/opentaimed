@@ -18,14 +18,18 @@ from taiwan_fda_mcp.exceptions import DatasetFetchError, RCode
 from taiwan_fda_mcp.models import DrugInsert
 from taiwan_fda_mcp.sources.insert.cache import get_insert_cache
 from taiwan_fda_mcp.sources.insert.throttle import get_insert_throttle
+from taiwan_fda_mcp.sources.opendata.appearance_store import get_appearance_store
 from taiwan_fda_mcp.sources.opendata.dataset37 import (
     load_from_cache,
     parse_rows,
     write_to_cache,
 )
-from taiwan_fda_mcp.tool_responses import GetPackageInsertResponse
+from taiwan_fda_mcp.sources.opendata.dataset42 import parse_rows as parse_rows_42
+from taiwan_fda_mcp.sources.opendata.dataset42 import write_to_cache as write_to_cache_42
+from taiwan_fda_mcp.tool_responses import GetDrugAppearanceResponse, GetPackageInsertResponse
 from taiwan_fda_mcp.tools import (
     check_insert_updates,
+    get_drug_appearance,
     get_package_insert,
     search_by_ingredient,
     search_drugs,
@@ -1286,9 +1290,73 @@ async def test_background_refresh_retries_until_success(seeded_settings, monkeyp
 
 
 def test_get_drug_appearance_response_importable_and_flat():
-    from taiwan_fda_mcp.tool_responses import GetDrugAppearanceResponse
-
     r = GetDrugAppearanceResponse(license_no="L1", appearance_on_file=False)
     assert r.appearance_on_file is False
     assert r.image_url is None
     assert r.shape == ""
+
+
+@pytest.fixture(autouse=True)
+def _reset_appearance_store():
+    """Clear the process-wide appearance index between tests."""
+    get_appearance_store().reset()
+
+
+def _appearance_settings(tmp_path: Path) -> Settings:
+    return Settings(  # type: ignore[call-arg]
+        DATASET42_CACHE_DIR=tmp_path,
+        DATASET42_TTL_HOURS=24,
+        FDA_RATE_LIMIT_INTERVAL_SECONDS=0.0,
+    )
+
+
+def _seed_appearance_cache(tmp_path: Path, rows: list[dict]) -> None:
+    write_to_cache_42(parse_rows_42(rows), tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_get_drug_appearance_hit(tmp_path):
+    _seed_appearance_cache(
+        tmp_path,
+        [
+            {
+                "許可證字號": "內衛成製字第000075號",
+                "中文品名": "蘇打錠",
+                "形狀": "圓形",
+                "顏色": "白",
+                "標註一": "FY T061",
+                "外觀圖檔連結": "https://mcp.fda.gov.tw/insert/shapeImg/abc?c=o",
+            }
+        ],
+    )
+    resp = await get_drug_appearance(
+        "內衛成製字第000075號", settings=_appearance_settings(tmp_path)
+    )
+    assert resp.appearance_on_file is True
+    assert resp.shape == "圓形"
+    assert resp.imprint_1 == "FY T061"
+    assert resp.image_url == "https://mcp.fda.gov.tw/insert/shapeImg/abc?c=o"
+    assert resp.source_url is not None
+    assert resp.attribution is not None
+    assert resp.error is None
+
+
+@pytest.mark.asyncio
+async def test_get_drug_appearance_miss_is_not_error(tmp_path):
+    _seed_appearance_cache(tmp_path, [{"許可證字號": "OTHER", "中文品名": "藥"}])
+    resp = await get_drug_appearance("查無此證", settings=_appearance_settings(tmp_path))
+    assert resp.appearance_on_file is False
+    assert resp.error is None
+    assert resp.image_url is None
+    assert resp.dataset_retrieved_at is not None  # still cites the dataset
+
+
+@pytest.mark.asyncio
+async def test_get_drug_appearance_rejects_offhost_image_url(tmp_path):
+    _seed_appearance_cache(
+        tmp_path,
+        [{"許可證字號": "L1", "中文品名": "藥", "外觀圖檔連結": "https://evil.example/x.png"}],
+    )
+    resp = await get_drug_appearance("L1", settings=_appearance_settings(tmp_path))
+    assert resp.appearance_on_file is True
+    assert resp.image_url is None  # off-host URL dropped
