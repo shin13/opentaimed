@@ -38,3 +38,4 @@ session-state notes kept in `.private/`.
 | [0010](./0010-http-transport-hosting-model.md) | HTTP transport and staged hosting model (internal → external) | Accepted (Stage 1) |
 | [0011](./0011-opt-in-package-insert-cache.md) | Opt-in package-insert cache | Accepted |
 | [0012](./0012-dataset37-over-ttl-blocking-refresh.md) | Over-TTL blocking refresh for the Dataset 37 search index | Accepted |
+| [0013](./0013-dataset42-drug-appearance.md) | Dataset 42 drug-appearance tool (`get_drug_appearance`) | Accepted |
