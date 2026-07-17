@@ -1,16 +1,29 @@
 # path: tests/unit/test_dataset42.py
 # brief: Verify Dataset 42 (drug appearance) parse + cache behaviour.
 
+import io
+import json
+import zipfile
 from pathlib import Path
 
+import httpx
+import pytest
+import respx
+
 from taiwan_fda_mcp.models import DrugAppearance
-
-
+from taiwan_fda_mcp.sources.opendata.client import fetch_dataset42
 from taiwan_fda_mcp.sources.opendata.dataset42 import (
     load_from_cache,
     parse_rows,
     write_to_cache,
 )
+
+
+def _zip_json(rows: list[dict]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("42_5.json", json.dumps(rows, ensure_ascii=False))
+    return buf.getvalue()
 
 
 def test_drug_appearance_defaults_empty():
@@ -55,3 +68,15 @@ def test_cache_round_trip(tmp_path: Path):
 
 def test_load_from_cache_missing_returns_none(tmp_path: Path):
     assert load_from_cache(tmp_path) is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_dataset42_downloads_and_parses():
+    rows = [{"許可證字號": "L1", "中文品名": "藥", "形狀": "圓形"}]
+    respx.get("https://data.fda.gov.tw/data/opendata/export/42/json").mock(
+        return_value=httpx.Response(200, content=_zip_json(rows))
+    )
+    result = await fetch_dataset42("https://data.fda.gov.tw", rate_limit_interval=0.0)
+    assert len(result) == 1
+    assert result[0].shape == "圓形"
