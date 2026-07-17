@@ -10,10 +10,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ### Added
 - CI: daily live TFDA smoke test (`smoke.yml`) and weekly `pip-audit` dependency
   CVE scan (`audit.yml`), each auto-filing a deduped GitHub issue on failure.
+- CI: `.github/dependabot.yml` enables routine weekly version-update PRs for the
+  `uv` Python deps and adds the `github-actions` ecosystem, which keeps the new
+  commit-SHA action pins current. (Dependabot security updates already ran
+  without this config.)
 
 ### Security
 - Lightweight v1 security review (`docs/security-review-2026-07.md`) walking the
   10 CLAUDE.md security invariants against the shipped read-only surface.
+- CI: every GitHub Actions `uses:` is now pinned to a full commit SHA (with a
+  `# vX.Y.Z` comment) instead of a mutable version/branch tag — supply-chain
+  hardening. Pins target the latest Node 24 action majors (checkout v7,
+  setup-uv v8, upload-artifact v7, download-artifact v8, gitleaks-action v3,
+  gh-action-pypi-publish v1.14.0), removing the Node 20 deprecation warning
+  ahead of GitHub's 2026-09-16 Node 20 runtime removal.
 
 ## [0.6.0] — 2026-07-07
 
