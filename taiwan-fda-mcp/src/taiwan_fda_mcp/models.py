@@ -24,6 +24,23 @@ class DrugLicense(BaseModel):
     last_change_date: str = Field(default="", description="異動日期 YYYY/MM/DD")
 
 
+class DrugAppearance(BaseModel):
+    """One row from data.fda.gov.tw Dataset 42 (藥品外觀資料集)."""
+
+    license_no: str = Field(description="許可證字號, e.g. 內衛成製字第000075號")
+    name_zh: str = Field(default="", description="中文品名")
+    name_en: str = Field(default="", description="英文品名")
+    shape: str = Field(default="", description="形狀")
+    color: str = Field(default="", description="顏色")
+    special_dosage_form: str = Field(default="", description="特殊劑型")
+    odor: str = Field(default="", description="特殊氣味")
+    score_line: str = Field(default="", description="刻痕")
+    dimensions: str = Field(default="", description="外觀尺寸")
+    imprint_1: str = Field(default="", description="標註一")
+    imprint_2: str = Field(default="", description="標註二")
+    image_url: str = Field(default="", description="外觀圖檔連結 (官方 hosted URL)")
+
+
 class InsertImage(BaseModel):
     """One `<VALUE type="image" encode="1">` payload attached to a section.
 
