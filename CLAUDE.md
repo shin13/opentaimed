@@ -255,18 +255,25 @@ Current:
   Contributors run `pre-commit install` once after clone; on macOS
   Tahoe, install pre-commit via `uv tool install pre-commit` rather
   than brew (brew-bundled Python tools get SIGKILL'd by Gatekeeper).
+- Every `uses:` in `.github/workflows/` is pinned to a full commit SHA with a
+  trailing `# vX.Y.Z` comment (supply-chain hardening). Pinned to the latest
+  Node 24 action majors (checkout v7, setup-uv v8, upload-artifact v7,
+  download-artifact v8, gitleaks-action v3, gh-action-pypi-publish v1.14.0):
+  GitHub flips the runner default to Node 24 on 2026-06-02 and **removes the
+  Node 20 runtime entirely on 2026-09-16**, after which Node 20 actions stop
+  working. To repin a version, resolve the tag to its commit SHA with
+  `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`.
+- `.github/dependabot.yml` — routine weekly version-update PRs for the `uv`
+  Python deps (minor/patch grouped, `chore(deps)` prefix) and the
+  `github-actions` ecosystem (`ci` prefix), the latter keeping the commit-SHA
+  action pins current — without it, SHA-pinning would silently freeze the
+  actions. Dependabot *security* updates run independently (repo setting, no
+  config) and already land `chore(deps)` CVE-fix PRs.
 
 Branch protection: a repository ruleset enforces PR-only updates to
 `main` (no direct push, no force-push, no deletion) with required
 status check `taiwan-fda-mcp` and required conversation resolution.
 No bypass list, including admin.
-
-Planned:
-
-- Dependabot *scheduled version-update* PRs (needs `.github/dependabot.yml`).
-  Note: Dependabot *security* updates are already active — they land the
-  `chore(deps)` CVE-fix PRs today; only routine version bumps are outstanding.
-- Pinned actions by commit SHA rather than version tag.
 
 ## Source Expansion Pattern
 
