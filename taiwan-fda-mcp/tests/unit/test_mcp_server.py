@@ -12,8 +12,11 @@ from fastmcp import Client
 import taiwan_fda_mcp.mcp_server as srv
 import taiwan_fda_mcp.tools as tools_mod
 from taiwan_fda_mcp.config import Settings
-from taiwan_fda_mcp.mcp_server import mcp
+from taiwan_fda_mcp.mcp_server import get_drug_appearance, mcp
+from taiwan_fda_mcp.sources.opendata.appearance_store import get_appearance_store
 from taiwan_fda_mcp.sources.opendata.dataset37 import parse_rows, write_to_cache
+from taiwan_fda_mcp.sources.opendata.dataset42 import parse_rows as parse_rows_42
+from taiwan_fda_mcp.sources.opendata.dataset42 import write_to_cache as write_to_cache_42
 
 
 @pytest.fixture(autouse=True)
@@ -84,6 +87,7 @@ async def test_lists_all_tools():
         "search_by_ingredient",
         "get_package_insert",
         "check_insert_updates",
+        "get_drug_appearance",
     }
 
 
@@ -159,3 +163,21 @@ async def test_otc_structure_resource_listed_and_readable():
         assert "usage" in text
         assert "usage_precautions" in text
         assert "otc_warnings" in text
+
+
+@pytest.mark.asyncio
+async def test_get_drug_appearance_tool_registered(tmp_path, monkeypatch):
+    get_appearance_store().reset()
+    write_to_cache_42(
+        parse_rows_42([{"許可證字號": "L1", "中文品名": "藥", "形狀": "圓形"}]), tmp_path
+    )
+    overridden = Settings(  # type: ignore[call-arg]
+        DATASET42_CACHE_DIR=tmp_path,
+        DATASET42_TTL_HOURS=24,
+        FDA_RATE_LIMIT_INTERVAL_SECONDS=0.0,
+    )
+    monkeypatch.setattr(tools_mod, "get_settings", lambda: overridden)
+
+    resp = await get_drug_appearance("L1")
+    assert resp.appearance_on_file is True
+    assert resp.shape == "圓形"
