@@ -1,6 +1,7 @@
 # path: tests/unit/test_insert_parser.py
 # brief: Verify GetDrugDoc XML → DrugInsert parsing.
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -124,6 +125,28 @@ def test_image_mime_falls_back_to_filename_extension():
     assert by_no["1.4"].images[0].mime == "image/png"  # from .PNG extension
     # No mimetype and no filename → generic fallback (never a malformed data: URL).
     assert insert.sections[1].images[0].mime == "application/octet-stream"
+
+
+def test_image_mime_sniffs_magic_bytes_when_attrs_absent():
+    """Real TFDA images omit mimetype AND filename; magic bytes must resolve the type."""
+    jpeg_b64 = base64.b64encode(b"\xff\xd8\xff\xe0" + b"\x00" * 12).decode()
+    png_b64 = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8).decode()
+    xml = f"""<?xml version="1.0" encoding="utf-8"?>
+    <ROOTDOCUMENT><DOCUMENT>
+      <INFO><SNO>X</SNO><CNAME>c</CNAME><ENAME>e</ENAME>
+            <DTYPE>d</DTYPE><VERSION>v</VERSION><VDATE>2026/01/01</VDATE></INFO>
+      <CONTENT>
+        <SECTION LEVEL="1"><NO>1</NO><TITLE>性狀</TITLE>
+          <VALUE type="image" encode="1">{jpeg_b64}</VALUE></SECTION>
+        <SECTION LEVEL="1"><NO>2</NO><TITLE>x</TITLE>
+          <VALUE type="image" encode="1">{png_b64}</VALUE></SECTION>
+      </CONTENT>
+    </DOCUMENT></ROOTDOCUMENT>""".encode()
+
+    inserts = parse_get_drug_doc(xml)
+    by_no = {s.number: s for s in inserts[0].sections}
+    assert by_no["1"].images[0].mime == "image/jpeg"
+    assert by_no["2"].images[0].mime == "image/png"
 
 
 def test_empty_root_returns_empty_list():
