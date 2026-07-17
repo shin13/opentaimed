@@ -8,8 +8,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- `get_drug_appearance` tool — official drug appearance (藥品外觀) from TFDA
+  Dataset 42: structured pill descriptors (shape/color/dimensions/score/imprint)
+  plus the official appearance image URL, forward-only, URL-passthrough
+  (ADR-0013).
 - CI: daily live TFDA smoke test (`smoke.yml`) and weekly `pip-audit` dependency
   CVE scan (`audit.yml`), each auto-filing a deduped GitHub issue on failure.
+
+### Fixed
+- Insert-image MIME is now sniffed from magic bytes when the
+  `<VALUE type="image">` element omits both `mimetype` and `filename`, so the
+  emitted `data:` URL renders as an image.
 - CI: `.github/dependabot.yml` enables routine weekly version-update PRs for the
   `uv` Python deps and adds the `github-actions` ecosystem, which keeps the new
   commit-SHA action pins current. (Dependabot security updates already ran

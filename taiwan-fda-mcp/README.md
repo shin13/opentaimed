@@ -35,6 +35,8 @@ It adds four tools to your assistant:
   grouped into single-ingredient (單方) vs combination (複方) products.
 - **`get_package_insert`** — read the official 仿單 of one drug license
   (indications, dosage, warnings, side effects…), with a source link.
+- **`get_drug_appearance`** — look up a drug's physical appearance
+  (shape/color/dimensions/score/imprint) plus the official appearance image URL.
 - **`check_insert_updates`** — list inserts updated since a given date.
 
 You don't call these by hand. You just ask your assistant a question, e.g.:
@@ -156,11 +158,12 @@ docker compose up -d --build
 
 ### 可以做什麼?
 
-它幫你的助理加上四個工具:
+它幫你的助理加上五個工具:
 
 - **`search_drugs`** — 用中／英文藥名、成分、適應症、製造商等條件找藥。
 - **`search_by_ingredient`** — 列出某成分的所有藥證,依單方／複方分組。
 - **`get_package_insert`** — 讀某一張藥證的官方仿單(適應症、用法用量、警語、副作用…),附出處連結。
+- **`get_drug_appearance`** — 查某一張藥證的藥品外觀(形狀／顏色／尺寸／刻痕／標註),附官方外觀圖連結。
 - **`check_insert_updates`** — 列出某日期之後更新過的仿單。
 
 你不用自己呼叫這些工具,直接問助理就好,例如:
@@ -196,7 +199,7 @@ uv run taiwan-fda-mcp
 
 ### 裝好之後怎麼用(連到你的 AI 代理人)
 
-把 server 加進你工具的設定檔,重新啟動,然後直接用中文問藥物問題,四個工具會自動出現。
+把 server 加進你工具的設定檔,重新啟動,然後直接用中文問藥物問題,五個工具會自動出現。
 
 **Claude Code**
 
