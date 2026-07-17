@@ -27,6 +27,7 @@ TOOL_NAMES = [
     "search_by_ingredient",
     "get_package_insert",
     "check_insert_updates",
+    "get_drug_appearance",
 ]
 
 

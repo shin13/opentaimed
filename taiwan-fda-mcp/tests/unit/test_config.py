@@ -96,3 +96,9 @@ def test_invalid_transport_rejected_at_load():
     # never mid-request.
     with pytest.raises(ValidationError):
         Settings(MCP_TRANSPORT="banana")  # type: ignore[arg-type]
+
+
+def test_dataset42_defaults():
+    s = Settings()  # type: ignore[call-arg]
+    assert s.DATASET42_TTL_HOURS == 24  # noqa: PLR2004
+    assert str(s.DATASET42_CACHE_DIR).endswith("dataset42")

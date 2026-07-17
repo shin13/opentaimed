@@ -11,14 +11,19 @@ from starlette.responses import PlainTextResponse
 from taiwan_fda_mcp.config import get_settings
 from taiwan_fda_mcp.logging_config import configure_logging
 from taiwan_fda_mcp.resources import OTC_INSERT_STRUCTURE_MD, RX_INSERT_STRUCTURE_MD
+from taiwan_fda_mcp.sources.opendata.appearance_store import get_appearance_store
 from taiwan_fda_mcp.tool_responses import (
     CheckInsertUpdatesResponse,
+    GetDrugAppearanceResponse,
     GetPackageInsertResponse,
     SearchByIngredientResponse,
     SearchDrugsResponse,
 )
 from taiwan_fda_mcp.tools import (
     check_insert_updates as _check_insert_updates,
+)
+from taiwan_fda_mcp.tools import (
+    get_drug_appearance as _get_drug_appearance,
 )
 from taiwan_fda_mcp.tools import (
     get_package_insert as _get_package_insert,
@@ -37,9 +42,10 @@ ResponseFormatLiteral = Literal["concise", "key", "detailed", "full"]
 
 @asynccontextmanager
 async def _lifespan(_server: FastMCP):
-    """Cancel the background refresh task on graceful shutdown (ADR-0010)."""
+    """Cancel background refresh tasks on graceful shutdown (ADR-0010 / 0013)."""
     yield
     await _shutdown_refresh()
+    await get_appearance_store().shutdown()
 
 
 mcp: FastMCP = FastMCP(
@@ -85,6 +91,14 @@ mcp: FastMCP = FastMCP(
         "spellings (BESYLATE vs BESILATE) form distinct groups by design; do NOT "
         "tell the user they are the same drug — report the groups as returned. Then "
         "pick a license_no from a group and continue with get_package_insert.\n\n"
+        "**Appearance lookup (藥品外觀):** For \"what does this pill look like\" / "
+        "pill-identification questions, call `get_drug_appearance(license_no)` — it "
+        "returns official Dataset 42 descriptors (形狀/顏色/外觀尺寸/刻痕/標註) plus an "
+        "official appearance image URL, without fetching the insert. This is the "
+        "appearance source; `get_package_insert` images are manufacturer-embedded "
+        "insert images (sparse) and are NOT the pill-appearance source. Appearance "
+        "covers only a subset of drugs — on a miss the tool returns "
+        "`appearance_on_file: false` (未載明); do NOT infer an appearance.\n\n"
         "**Black box warning (special_warning):** When this field is non-empty, "
         "you MUST quote its content verbatim in any response that mentions "
         "warnings or contraindications. Do NOT paraphrase, summarise, or merge "
@@ -210,6 +224,35 @@ async def search_by_ingredient(
         ingredient=ingredient,
         limit_per_group=limit_per_group,
     )
+
+
+@mcp.tool
+async def get_drug_appearance(license_no: str) -> GetDrugAppearanceResponse:
+    """Look up a Taiwan FDA drug's physical appearance (藥品外觀) by license number.
+
+    Returns OFFICIAL structured pill descriptors — shape (形狀), color (顏色),
+    dimensions (外觀尺寸), score line (刻痕), imprint text (標註) — plus the
+    official appearance image URL. Fast: reads TFDA Dataset 42, no insert fetch.
+
+    Use this for "what does this pill look like?" / pill-identification questions.
+    For 仿單 clinical text (indication/dosage/warnings), use get_package_insert
+    instead; that tool's `images` are whatever the manufacturer embedded in the
+    insert XML (sparse) — NOT the pill-appearance source.
+
+    Appearance is documented for only a SUBSET of licensed drugs. When TFDA has
+    no appearance on file, `appearance_on_file` is false and every descriptor is
+    empty — this is 未載明, not an error; do NOT infer an appearance.
+
+    Args:
+        license_no: full Chinese license string (e.g. "內衛成製字第000075號"),
+            as returned by search_drugs.
+
+    Returns:
+        GetDrugAppearanceResponse with appearance_on_file, structured descriptors,
+        image_url (official mcp.fda.gov.tw URL or null), source_url,
+        dataset_retrieved_at, and attribution.
+    """
+    return await _get_drug_appearance(license_no=license_no)
 
 
 @mcp.tool

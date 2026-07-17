@@ -1,0 +1,13 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "license_no": {
+      "description": "full Chinese license string (e.g. \"內衛成製字第000075號\"),\nas returned by search_drugs.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "license_no"
+  ],
+  "type": "object"
+}

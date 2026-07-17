@@ -1,0 +1,181 @@
+{
+  "additionalProperties": false,
+  "description": "Response shape for `get_drug_appearance` (Dataset 42, ADR-0013).\n\nForward-only (license_no → appearance). Citation mirrors the dataset-backed\n`SearchDrugsResponse` precedent: `source_url` + `dataset_retrieved_at` +\n`attribution` (Dataset 42 has no per-row date). `appearance_on_file=false`\nis the 未載明 fact — the license is not in Dataset 42 — NOT a tool failure.",
+  "properties": {
+    "appearance_on_file": {
+      "default": false,
+      "description": "True iff TFDA Dataset 42 has an appearance row for this license. False = 未載明 (not documented) — appearance covers only ~24% of active licenses; do NOT infer an appearance when this is false.",
+      "type": "boolean"
+    },
+    "attribution": {
+      "anyOf": [
+        {
+          "description": "Per-response attribution — distinguishes official data from third-party wrapper.",
+          "properties": {
+            "data_official": {
+              "description": "True iff `data_source` is a government/official body.",
+              "type": "boolean"
+            },
+            "data_source": {
+              "description": "Authoritative data origin.",
+              "type": "string"
+            },
+            "wrapper": {
+              "description": "Identity of the (third-party) MCP server returning this response.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "data_source",
+            "data_official",
+            "wrapper"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Official-data vs third-party-wrapper origin."
+    },
+    "color": {
+      "default": "",
+      "description": "顏色.",
+      "type": "string"
+    },
+    "dataset_age_hours": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Age of the appearance index in hours at response time."
+    },
+    "dataset_retrieved_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO 8601 UTC time the appearance index was last loaded."
+    },
+    "dimensions": {
+      "default": "",
+      "description": "外觀尺寸.",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "description": "Structured error block. `code` is the RCode name (string form, stable identifier).",
+          "properties": {
+            "code": {
+              "description": "Stable error code identifier (e.g. 'INSERT_NOT_FOUND').",
+              "type": "string"
+            },
+            "message": {
+              "description": "Human-readable error message in Traditional Chinese or English.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Null on success."
+    },
+    "image_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Official TFDA appearance image URL (mcp.fda.gov.tw). Null if not on file or the stored URL failed host validation. Passed through, NOT fetched — the client loads it if an image is needed."
+    },
+    "imprint_1": {
+      "default": "",
+      "description": "標註一 (imprint).",
+      "type": "string"
+    },
+    "imprint_2": {
+      "default": "",
+      "description": "標註二 (imprint).",
+      "type": "string"
+    },
+    "is_stale": {
+      "default": false,
+      "description": "True iff the index is past its TTL and a background reload is under way.",
+      "type": "boolean"
+    },
+    "license_no": {
+      "description": "Echo of the license_no the caller passed.",
+      "type": "string"
+    },
+    "name_en": {
+      "default": "",
+      "description": "英文品名.",
+      "type": "string"
+    },
+    "name_zh": {
+      "default": "",
+      "description": "中文品名 (empty when not on file).",
+      "type": "string"
+    },
+    "odor": {
+      "default": "",
+      "description": "特殊氣味.",
+      "type": "string"
+    },
+    "score_line": {
+      "default": "",
+      "description": "刻痕 (score line).",
+      "type": "string"
+    },
+    "shape": {
+      "default": "",
+      "description": "形狀 (e.g. 圓形).",
+      "type": "string"
+    },
+    "source_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Dataset 42 export URL (cite as evidence)."
+    },
+    "special_dosage_form": {
+      "default": "",
+      "description": "特殊劑型.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "license_no"
+  ],
+  "type": "object"
+}
