@@ -153,6 +153,63 @@ class SearchByIngredientResponse(BaseModel):
     error: ErrorInfo | None = Field(default=None, description="Null on success.")
 
 
+class GetDrugAppearanceResponse(BaseModel):
+    """Response shape for `get_drug_appearance` (Dataset 42, ADR-0013).
+
+    Forward-only (license_no → appearance). Citation mirrors the dataset-backed
+    `SearchDrugsResponse` precedent: `source_url` + `dataset_retrieved_at` +
+    `attribution` (Dataset 42 has no per-row date). `appearance_on_file=false`
+    is the 未載明 fact — the license is not in Dataset 42 — NOT a tool failure.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    license_no: str = Field(description="Echo of the license_no the caller passed.")
+    error: ErrorInfo | None = Field(default=None, description="Null on success.")
+    appearance_on_file: bool = Field(
+        default=False,
+        description=(
+            "True iff TFDA Dataset 42 has an appearance row for this license. "
+            "False = 未載明 (not documented) — appearance covers only ~24% of "
+            "active licenses; do NOT infer an appearance when this is false."
+        ),
+    )
+    name_zh: str = Field(default="", description="中文品名 (empty when not on file).")
+    name_en: str = Field(default="", description="英文品名.")
+    shape: str = Field(default="", description="形狀 (e.g. 圓形).")
+    color: str = Field(default="", description="顏色.")
+    special_dosage_form: str = Field(default="", description="特殊劑型.")
+    odor: str = Field(default="", description="特殊氣味.")
+    score_line: str = Field(default="", description="刻痕 (score line).")
+    dimensions: str = Field(default="", description="外觀尺寸.")
+    imprint_1: str = Field(default="", description="標註一 (imprint).")
+    imprint_2: str = Field(default="", description="標註二 (imprint).")
+    image_url: str | None = Field(
+        default=None,
+        description=(
+            "Official TFDA appearance image URL (mcp.fda.gov.tw). Null if not on "
+            "file or the stored URL failed host validation. Passed through, NOT "
+            "fetched — the client loads it if an image is needed."
+        ),
+    )
+    source_url: str | None = Field(
+        default=None, description="Dataset 42 export URL (cite as evidence)."
+    )
+    dataset_retrieved_at: str | None = Field(
+        default=None, description="ISO 8601 UTC time the appearance index was last loaded."
+    )
+    dataset_age_hours: float | None = Field(
+        default=None, description="Age of the appearance index in hours at response time."
+    )
+    is_stale: bool = Field(
+        default=False,
+        description="True iff the index is past its TTL and a background reload is under way.",
+    )
+    attribution: Attribution | None = Field(
+        default=None, description="Official-data vs third-party-wrapper origin."
+    )
+
+
 class UnknownFieldInfo(BaseModel):
     """One unknown field-name entry — annotated with closest valid match."""
 
@@ -452,6 +509,7 @@ __all__ = [
     "DrugLicenseRow",
     "ErrorInfo",
     "FactoryEntity",
+    "GetDrugAppearanceResponse",
     "GetPackageInsertResponse",
     "ImageRef",
     "IngredientGroup",

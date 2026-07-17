@@ -1283,3 +1283,12 @@ async def test_background_refresh_retries_until_success(seeded_settings, monkeyp
     assert attempts == 2  # noqa: PLR2004
     assert _tools_mod._LICENSES_CACHE == ["NEW"]
     assert _tools_mod._is_stale(seeded_settings) is False
+
+
+def test_get_drug_appearance_response_importable_and_flat():
+    from taiwan_fda_mcp.tool_responses import GetDrugAppearanceResponse
+
+    r = GetDrugAppearanceResponse(license_no="L1", appearance_on_file=False)
+    assert r.appearance_on_file is False
+    assert r.image_url is None
+    assert r.shape == ""
