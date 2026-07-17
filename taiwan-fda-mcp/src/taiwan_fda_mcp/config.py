@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     # the call serves the last-good snapshot (is_stale=True). Must be > 0.
     DATASET37_REFRESH_TIMEOUT_SECONDS: float = Field(default=15.0, gt=0)
 
+    # --- Dataset 42 (藥品外觀 appearance index, ADR-0013). Non-blocking refresh:
+    # a query past the TTL is served from the last snapshot while a background
+    # reload runs (appearance is not safety-time-critical, unlike license
+    # validity — so ADR-0012's blocking refresh is intentionally NOT applied).
+    DATASET42_CACHE_DIR: Path = Field(
+        default_factory=lambda: Path(user_cache_dir("taiwan-fda-mcp")) / "dataset42"
+    )
+    DATASET42_TTL_HOURS: int = 24
+
     LOG_LEVEL: str = "INFO"
 
     # --- Transport (ADR-0010): stdio for individual `uvx` use (default),
