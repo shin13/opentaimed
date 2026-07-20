@@ -7,6 +7,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+- CI: the daily smoke job (`smoke.yml`) now has a `timeout-minutes` cap and its
+  auto-filed failure issue distinguishes a **transient TFDA outage** from real
+  **contract drift** with a triage step. Previously a nightly `mcp.fda.gov.tw`
+  outage let the run hang ~43 min (each insert fetch burns its 120s × 3-retry
+  budget) and filed an issue asserting contract drift — a false alarm during
+  TFDA's ~02:00 Asia/Taipei maintenance window.
+
 ### Added
 - `get_drug_appearance` tool — official drug appearance (藥品外觀) from TFDA
   Dataset 42: structured pill descriptors (shape/color/dimensions/score/imprint)
