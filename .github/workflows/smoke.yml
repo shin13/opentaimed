@@ -23,6 +23,11 @@ jobs:
   smoke:
     name: live smoke (-m smoke)
     runs-on: ubuntu-latest
+    # A healthy run is ~2 min. When mcp.fda.gov.tw is unreachable (common in the
+    # ~02:00 Asia/Taipei maintenance window) each insert fetch burns its full
+    # 120s x 3-retry budget, so an untimed run has hung ~43 min before failing.
+    # Cap it: fail fast on a sustained upstream outage instead of idling a runner.
+    timeout-minutes: 12
     defaults:
       run:
         working-directory: taiwan-fda-mcp
@@ -56,6 +61,7 @@ jobs:
     needs: smoke
     if: failure()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write
@@ -68,7 +74,7 @@ jobs:
           LABEL: smoke-failure
           DESC: "Daily TFDA live smoke test failed"
           TITLE: "Daily TFDA smoke test failing"
-          BODY: "The daily live smoke test (`pytest -m smoke`) failed. This usually means TFDA changed a field, dropped a section, or a pinned license number moved — investigate before trusting insert citations."
+          BODY: "The daily live smoke test (`pytest -m smoke`) failed. Two likely causes, in order of frequency: (1) **transient TFDA outage** — `mcp.fda.gov.tw` was slow or unreachable (common in the ~02:00 Asia/Taipei maintenance window); the run hangs on request timeouts and hits the job's `timeout-minutes` cap. (2) **real contract drift** — TFDA renamed a field, dropped a section, or a pinned license moved. **Triage:** re-run the workflow (Actions → smoke → Run workflow). If it now passes, it was a transient outage — close this issue. If it fails again quickly on an assertion (not a timeout), it is contract drift — investigate before trusting insert citations."
         run: |
           set -euo pipefail
           gh label create "$LABEL" -R "$REPO" --color B60205 --description "$DESC" --force
