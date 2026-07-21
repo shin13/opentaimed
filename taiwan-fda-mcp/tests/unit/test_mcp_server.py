@@ -123,6 +123,41 @@ async def test_get_package_insert_tool(fixtures_dir: Path):
     assert "indication" in payload["fields"]
 
 
+@pytest.mark.asyncio
+async def test_get_package_insert_accepts_json_string_fields(fixtures_dir: Path):
+    """`fields` sent as a JSON-array STRING (Claude Desktop stringify quirk) is honored."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "get_package_insert",
+                {"license_no": "衛署藥輸字第021571號", "fields": '["indication"]'},
+            )
+    payload = result.structured_content or json.loads(result.content[0].text)  # type: ignore[union-attr]
+    assert "indication" in payload["fields"]
+
+
+@pytest.mark.asyncio
+async def test_check_insert_updates_accepts_json_string_license_list(fixtures_dir: Path):
+    """`license_list` sent as a JSON-array STRING is coerced, not rejected."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "check_insert_updates",
+                {"since_date": "2026-07-18", "license_list": '["衛署藥輸字第021571號"]'},
+            )
+    payload = result.structured_content or json.loads(result.content[0].text)  # type: ignore[union-attr]
+    assert payload["error"] is None
+    assert "total" in payload
+
+
 def _resource_text(content) -> str:
     """Extract the text body from a FastMCP read_resource result."""
     return content[0].text if isinstance(content, list) else content.contents[0].text

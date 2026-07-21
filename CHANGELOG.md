@@ -24,6 +24,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   CVE scan (`audit.yml`), each auto-filing a deduped GitHub issue on failure.
 
 ### Fixed
+- `get_package_insert(fields=[...])` and `check_insert_updates(license_list=[...])`
+  now accept a JSON-array **string** for those list arguments, not only a real
+  array. Some MCP clients (observed with Claude Desktop) serialise list-typed
+  tool arguments as a string like `'["contraindications"]'`, which the union
+  schema rejected — forcing a failed call plus retry. A `BeforeValidator` coerces
+  such input back to a list before validation; malformed/non-array input still
+  falls through to the normal validation error (never silently dropped). The
+  `fields` parameter description also now shows the correct array form.
 - Insert-image MIME is now sniffed from magic bytes when the
   `<VALUE type="image">` element omits both `mimetype` and `filename`, so the
   emitted `data:` URL renders as an image.

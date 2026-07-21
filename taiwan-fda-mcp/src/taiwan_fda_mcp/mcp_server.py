@@ -2,12 +2,14 @@
 # brief: FastMCP stdio server exposing taiwan_fda_mcp.tools as MCP tools.
 
 from contextlib import asynccontextmanager
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastmcp import FastMCP
+from pydantic import BeforeValidator
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
+from taiwan_fda_mcp.coerce import coerce_json_array
 from taiwan_fda_mcp.config import get_settings
 from taiwan_fda_mcp.logging_config import configure_logging
 from taiwan_fda_mcp.resources import OTC_INSERT_STRUCTURE_MD, RX_INSERT_STRUCTURE_MD
@@ -37,6 +39,10 @@ from taiwan_fda_mcp.tools import (
 from taiwan_fda_mcp.tools import shutdown as _shutdown_refresh
 
 FieldGroupLiteral = Literal["all", "key_fields"]
+# Some MCP clients (observed: Claude Desktop) serialise list-typed tool arguments
+# as a JSON string, e.g. '["indication"]'. Coerce such input back to a list before
+# validation so the array branch of the union matches. See src/.../coerce.py.
+JsonStringList = Annotated[list[str], BeforeValidator(coerce_json_array)]
 ResponseFormatLiteral = Literal["concise", "key", "detailed", "full"]
 
 
@@ -259,7 +265,7 @@ async def get_drug_appearance(license_no: str) -> GetDrugAppearanceResponse:
 async def get_package_insert(
     license_no: str,
     response_format: ResponseFormatLiteral = "key",
-    fields: FieldGroupLiteral | list[str] | None = None,
+    fields: FieldGroupLiteral | JsonStringList | None = None,
 ) -> GetPackageInsertResponse:
     """Fetch the official package insert (仿單) for a Taiwan FDA drug license.
 
@@ -271,8 +277,9 @@ async def get_package_insert(
             the safety-critical default set; "detailed" = all mapped sub-section fields;
             "full" = detailed + main_factories / sub_factories / companies lists + image
             data_url payloads. See ADR-0006 for the rationale.
-        fields: explicit list of field names (overrides response_format). Either "key_fields",
-            "all", or a list drawn from this exact set:
+        fields: a JSON array of field names, e.g. ["contraindications", "warnings"] — pass a
+            real array, not a string containing an array. Overrides response_format.
+            Either "key_fields", "all", or a list drawn from this exact set:
             Basic — name_zh, name_en, license_no, form, applicant, manufacturer,
             drug_class, valid_until;
             Pre-section (always returned; "" + listed in confirmed_absent when XML element empty) —
@@ -328,7 +335,7 @@ async def get_package_insert(
 @mcp.tool
 async def check_insert_updates(
     since_date: str,
-    license_list: list[str] | None = None,
+    license_list: JsonStringList | None = None,
     limit: int = 200,
 ) -> CheckInsertUpdatesResponse:
     """List Taiwan FDA drug inserts that were updated on or after the given date.
