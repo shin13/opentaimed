@@ -146,6 +146,7 @@ mcp: FastMCP = FastMCP(
 @mcp.tool
 async def search_drugs(
     query: str = "",
+    *,
     name_zh: str = "",
     name_en: str = "",
     ingredient: str = "",
