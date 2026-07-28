@@ -7,6 +7,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+- `taiwan_fda_mcp.__version__` now reports the actual installed version. It was a
+  hand-written literal stuck at `0.1.0` since the first release — wrong for every
+  version up to 0.7.0 — even though it is an exported part of the public API.
+  It is now derived from the installed distribution metadata, making
+  `pyproject.toml` the single place a release bumps, and
+  `tests/unit/test_packaging.py` fails if the lookup ever falls back. Only
+  consumers reading `taiwan_fda_mcp.__version__` were affected; the MCP tool
+  surface never exposed this value.
+
 ## [0.7.0] — 2026-07-23
 
 ### Changed

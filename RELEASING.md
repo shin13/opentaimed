@@ -42,7 +42,10 @@ inside `taiwan-fda-mcp/` automatically (the workflow sets the working dir).
 
 In one PR (run the verification gate before pushing):
 
-- [ ] `taiwan-fda-mcp/pyproject.toml`: bump `version`.
+- [ ] `taiwan-fda-mcp/pyproject.toml`: bump `version`. **This is the only place
+      the version number is written.** `taiwan_fda_mcp.__version__` derives from
+      the installed distribution metadata, so it follows automatically — do not
+      hand-edit it back to a literal (see the lesson below).
 - [ ] `uv lock` (in `taiwan-fda-mcp/`) so `uv.lock` matches the new version —
       otherwise CI `uv sync --frozen` fails.
 - [ ] `CHANGELOG.md`: promote `[Unreleased]` → `[X.Y.Z] — <date>`; add a
@@ -111,3 +114,12 @@ Nothing reaches PyPI until you Approve.
   console-script names as a regression backstop.
 - **A rehearsal that differs from the real user path proves nothing.** Use
   the same install command on TestPyPI that the README gives users.
+- **Never hand-maintain a version number in two places.** `__init__.py` carried
+  a literal `__version__ = "0.1.0"` from the first release through 0.7.0 — wrong
+  for six releases, while `__version__` was an exported part of the public API.
+  Nothing caught it: `hatchling` builds wheel metadata from `pyproject.toml` and
+  never reads the module, and no test compared the two. This checklist was the
+  root cause, because it listed every *other* file to touch. The fix removes the
+  second place entirely rather than adding a checklist line to remember it —
+  `__version__` now reads the installed distribution metadata, and
+  `tests/unit/test_packaging.py` fails if that lookup ever falls back.
