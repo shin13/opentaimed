@@ -241,7 +241,9 @@ Current:
   `pyright src` → `pytest -v`. Runs on push to `main` and on every PR.
 - `.github/workflows/gitleaks.yml` — gitleaks secret-scan. Runs on
   push, every PR, and a weekly scheduled full-history baseline scan
-  (Monday 18:00 UTC = Tuesday 02:00 Taipei).
+  (Monday 18:00 UTC = Tuesday 02:00 Taipei). The `gitleaks scan` job is a
+  **required** status check — a red scan blocks the merge (see Branch
+  protection below).
 - `.github/workflows/smoke.yml` — daily live smoke test (`pytest -m smoke`,
   18:00 UTC = 02:00 Taipei) against the real TFDA APIs, to catch upstream
   contract drift within hours; a separate `alert` job dedup-files a GitHub
@@ -256,12 +258,14 @@ Current:
   Tahoe, install pre-commit via `uv tool install pre-commit` rather
   than brew (brew-bundled Python tools get SIGKILL'd by Gatekeeper).
 - Every `uses:` in `.github/workflows/` is pinned to a full commit SHA with a
-  trailing `# vX.Y.Z` comment (supply-chain hardening). Pinned to the latest
-  Node 24 action majors (checkout v7, setup-uv v8, upload-artifact v7,
-  download-artifact v8, gitleaks-action v3, gh-action-pypi-publish v1.14.0):
-  GitHub flips the runner default to Node 24 on 2026-06-02 and **removes the
-  Node 20 runtime entirely on 2026-09-16**, after which Node 20 actions stop
-  working. To repin a version, resolve the tag to its commit SHA with
+  trailing `# vX.Y.Z` comment (supply-chain hardening), and every pin is on a
+  **Node 24-capable action major**. GitHub flipped the runner default to Node 24
+  on 2026-06-02 and **removes the Node 20 runtime entirely on 2026-09-16**,
+  after which Node 20 actions stop working — so a new major must be adopted, not
+  deferred, before that date. Dependabot moves these pins on its own, so read
+  the current set rather than trusting a list written here:
+  `grep -rhoE "uses: [^ ]+ # .*" .github/workflows/ | sort -u`.
+  To repin, resolve a tag to its commit SHA with
   `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`.
 - `.github/dependabot.yml` — routine weekly version-update PRs for the `uv`
   Python deps (minor/patch grouped, `chore(deps)` prefix) and the
@@ -272,8 +276,40 @@ Current:
 
 Branch protection: a repository ruleset enforces PR-only updates to
 `main` (no direct push, no force-push, no deletion) with required
-status check `taiwan-fda-mcp` and required conversation resolution.
-No bypass list, including admin.
+conversation resolution, **squash as the only permitted merge method**,
+and two required status checks — `taiwan-fda-mcp` (test) **and
+`gitleaks scan`**. No bypass list, including admin.
+
+Secret handling is enforced at three points, deliberately layered so a
+leak is blocked rather than merely reported:
+
+1. **Local** — the gitleaks pre-commit hook, before a commit exists.
+2. **On push** — GitHub **secret scanning push protection**, which
+   rejects the push outright, so the secret never reaches GitHub.
+3. **On PR** — the `gitleaks scan` required check, which now *blocks the
+   merge*. Until 2026-07-28 it ran but was not required, so a red scan
+   still allowed merging: detection without enforcement.
+
+GitHub **secret scanning** is also enabled repo-wide (public repos get it
+free) and covers the full history, including provider-specific key
+formats that gitleaks patterns may miss. Its initial backfill scan
+returned 0 alerts.
+
+To read the live settings rather than trust this paragraph:
+
+```bash
+gh api repos/shin13/opentaimed/rulesets/16818961 \
+  --jq '{enforcement, rules:[.rules[].type],
+         checks:[.rules[]|select(.type=="required_status_checks")
+                 |.parameters.required_status_checks[].context]}'
+gh api repos/shin13/opentaimed --jq .security_and_analysis
+```
+
+⚠️ `PUT .../rulesets/{id}` treats a supplied `rules` array as a
+**wholesale replacement**, not a merge. Always `GET` the current ruleset,
+edit that payload, and `PUT` it back whole — sending a partial `rules`
+array silently drops every rule you omitted. Verify afterwards by
+checking the **rule list**, not just `enforcement`.
 
 ## Source Expansion Pattern
 
