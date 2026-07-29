@@ -82,6 +82,7 @@ untrusted-input surface is a single, well-contained channel.
   vulnerabilities found").
 - **Lockfile discipline** — `uv.lock` pinned; CI uses `uv sync --frozen`.
 - **Secret scanning** — gitleaks on push/PR + weekly full-history baseline.
+  **Strengthened after this review — see the 2026-07-28 addendum in §6.**
 - **Deferred hardening (Stage-2 triggers, CLAUDE.md escalation table):** pin
   GitHub Actions by commit SHA; distroless images + cosign signing (SCA Tier 3).
   Not required for the current read-only, no-secret, internal-only posture.
@@ -99,3 +100,42 @@ optional HTTP — carries no unmitigated High/Critical risk. Neither finding is
 durable enough to warrant a new ADR; both are reconciliation items gated on the
 existing PHI / external-exposure escalation triggers already recorded in
 CLAUDE.md.
+
+## 6. Addendum — 2026-07-28: secret handling hardened
+
+This review is a point-in-time snapshot and is not being rewritten. This
+addendum records one gap found *after* it, in the area §4 covers, plus the fix.
+
+**The gap.** §4 above and invariants #4/#9 credit gitleaks with guarding against
+accidental secret commits. That was accurate but incomplete in a way the review
+did not surface: the `gitleaks scan` job ran on every PR yet was **not a required
+status check**, so a red scan still permitted the merge. GitHub's own secret
+scanning and push protection were both **disabled**. The effective posture was
+therefore *detection without enforcement* — and detection at the wrong layer,
+since gitleaks in CI only fires once the commit is already on GitHub, by which
+point a leaked key must be treated as compromised and rotated regardless of how
+fast the commit is removed.
+
+**The fix (applied 2026-07-28).** Secret handling is now layered so the failure
+is blocked rather than reported:
+
+| Layer | Control | Effect when it fires |
+|---|---|---|
+| Pre-commit | gitleaks hook | No commit is created |
+| On push | GitHub secret scanning **push protection** | Push rejected; the secret never reaches GitHub |
+| On PR | `gitleaks scan` as a **required** check | Merge blocked |
+| Continuous | GitHub **secret scanning**, full history | Alerts on provider key formats gitleaks patterns may miss |
+
+Also narrowed: squash is now the only permitted merge method (ruleset and repo
+level), so `main` cannot accidentally gain a merge commit.
+
+**Verification.** `isRequired=true` confirmed for both `gitleaks scan` and
+`taiwan-fda-mcp` via the GraphQL `statusCheckRollup` on a throwaway PR (#71,
+closed unmerged); `secret_scanning` and `secret_scanning_push_protection` both
+report `enabled`; the initial full-history backfill scan returned **0 alerts**.
+Live-settings commands are recorded in CLAUDE.md → CI/CD → Branch protection.
+
+**Not treated as a new finding for §5.** No secret was ever exposed and no
+invariant was violated — invariants #4 and #9 held throughout. The gap was in
+the *strength* of the control, not in its presence, so it is recorded here as a
+posture improvement rather than a retroactive F3.
