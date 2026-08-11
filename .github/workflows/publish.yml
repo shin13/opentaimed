@@ -72,3 +72,47 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+  release:
+    name: create GitHub Release
+    # Runs only after PyPI accepted the upload. Publishing is manually gated on
+    # the `pypi` environment, and RELEASING.md documents abandoning a release by
+    # deleting the tag — creating the Release earlier would risk announcing a
+    # version that never shipped, pointing at a tag that no longer exists.
+    needs: publish
+    # `publish.yml` also accepts workflow_dispatch, where github.ref is a branch
+    # and there is no version to release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      # Deliberately a separate job: this is the only `contents: write` in the
+      # workflow, and it must not share a job with the `id-token: write` OIDC
+      # identity that Trusted Publishing exchanges for a PyPI credential.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Extract this version's CHANGELOG section
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" \
+            '$0 ~ "^## \\["ver"\\]" {f=1; next} /^## \[/ {f=0} f' \
+            CHANGELOG.md > release-notes.md
+          # A missing or renamed heading yields a blank file. Fail loudly rather
+          # than publishing an empty Release.
+          grep -q '[^[:space:]]' release-notes.md \
+            || { echo "::error::No CHANGELOG section found for [$version]"; exit 1; }
+
+      - name: Create the Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # `--latest` is correct while 0.x moves forward linearly. Revisit if a
+        # hotfix for an older minor is ever tagged after a newer release.
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            --latest \
+            --verify-tag
