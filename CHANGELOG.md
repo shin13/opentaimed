@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- CI: `publish.yml` now creates the GitHub Release itself on a version tag, with
+  the body extracted from this file's section for that version. Creating the
+  Release had never once happened as part of a release — all eight existing ones
+  were made after the fact, seven backfilled at once and `v0.7.1` by hand — so
+  the step is automated rather than added to `RELEASING.md` as another thing to
+  remember. It is a separate job holding the workflow's only `contents: write`,
+  kept apart from the `id-token: write` OIDC identity used for PyPI, and gated
+  on `needs: publish` so a Release never announces a version PyPI rejected. A
+  missing CHANGELOG section fails the job instead of publishing empty notes.
+
 ## [0.7.1] — 2026-08-11
 
 ### Fixed

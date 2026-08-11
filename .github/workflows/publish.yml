@@ -96,8 +96,11 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
+          # Literal match on the opening heading (index, not a regex) so the
+          # dots in a version number cannot act as wildcards; the closing
+          # condition is a genuine pattern — any next version heading ends it.
           awk -v ver="$version" \
-            '$0 ~ "^## \\["ver"\\]" {f=1; next} /^## \[/ {f=0} f' \
+            'index($0, "## [" ver "]") == 1 {f=1; next} /^## \[/ {f=0} f' \
             CHANGELOG.md > release-notes.md
           # A missing or renamed heading yields a blank file. Fail loudly rather
           # than publishing an empty Release.
