@@ -250,9 +250,20 @@ Current:
   issue on failure.
 - `.github/workflows/audit.yml` — weekly `pip-audit` of the locked runtime
   deps (Monday 19:00 UTC), complementing Dependabot; same dedup-issue alert.
-- Every workflow defaults to `permissions: contents: read` (least-privilege);
-  only the `smoke`/`audit` `alert` jobs elevate to `issues: write`, using the
-  native `GITHUB_TOKEN` (no external secret).
+- `.github/workflows/publish.yml` — the only workflow that ships anything.
+  Triggered by a `v*` tag: `build` (also extracts this version's `CHANGELOG.md`
+  section, failing the run if it is missing) → `publish` to PyPI via Trusted
+  Publishing (OIDC, no stored token; gated on manual approval of the `pypi`
+  environment) → `release`, which creates the GitHub Release from the extracted
+  notes. The runbook is [`RELEASING.md`](./RELEASING.md); do not create the
+  Release by hand.
+- Every workflow defaults to `permissions: contents: read` (least-privilege).
+  Three jobs elevate, each in its own job so the scope cannot leak into a
+  neighbour: the `smoke`/`audit` `alert` jobs take `issues: write`, and
+  `publish.yml`'s `release` job takes `contents: write` — deliberately kept out
+  of the `publish` job, which holds the `id-token: write` OIDC identity that
+  Trusted Publishing exchanges for a PyPI upload credential. All use the native
+  `GITHUB_TOKEN` (no external secret).
 - `.pre-commit-config.yaml` wires gitleaks as a local pre-commit hook.
   Contributors run `pre-commit install` once after clone; on macOS
   Tahoe, install pre-commit via `uv tool install pre-commit` rather

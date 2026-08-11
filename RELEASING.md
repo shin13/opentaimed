@@ -50,6 +50,9 @@ In one PR (run the verification gate before pushing):
       otherwise CI `uv sync --frozen` fails.
 - [ ] `CHANGELOG.md`: promote `[Unreleased]` → `[X.Y.Z] — <date>`; add a
       fresh empty `[Unreleased]`; add/refresh the footer compare links.
+      **Enforced, not just expected**: the tag's `build` job extracts this
+      section for the GitHub Release notes and fails if it is missing — before
+      the PyPI approval, while deleting the tag and re-cutting is still possible.
 - [ ] Update the shipped-version references: `README.md` and `CLAUDE.md`
       (`shipped — vX.Y.Z`).
 - [ ] Gate (from `taiwan-fda-mcp/`):
@@ -81,18 +84,34 @@ git push origin vX.Y.Z
 GitHub → Actions → the `publish` run is waiting on the `pypi` environment →
 **Approve and deploy**. It builds and uploads (~1–2 min).
 
+The **GitHub Release is then created automatically** by the workflow's third
+job, with notes taken from this version's `CHANGELOG.md` section. **Do not
+create it by hand** — `gh release create` fails if the Release already exists,
+which would redden an otherwise successful publish.
+
 ### 5. Verify — with the *literal* documented command
 
 ```bash
-# Confirm the version is live
+# Confirm the version is live. NOTE: /pypi/<pkg>/json is CDN-cached and can
+# still report the previous version for a while after a successful upload —
+# use the versioned endpoint before concluding a publish failed.
+curl -s https://pypi.org/pypi/taiwan-fda-mcp/X.Y.Z/json -o /dev/null -w '%{http_code}\n'
 curl -s https://pypi.org/pypi/taiwan-fda-mcp/json | python3 -c "import sys,json;print(json.load(sys.stdin)['info']['version'])"
 
 # Run EXACTLY what the README tells users to run — no extra flags
 uvx --refresh taiwan-fda-mcp
+
+# Confirm the auto-created Release landed and took over "Latest"
+gh api repos/shin13/opentaimed/releases/latest --jq .tag_name
 ```
 
 Success = the FastMCP banner + `Starting MCP server ... transport 'stdio'`
-with no error; it then waits for a client (Ctrl+C to exit).
+with no error; it then waits for a client (Ctrl+C to exit); and
+`releases/latest` reports the tag you just pushed.
+
+⚠️ `gh release view --json isLatest` and `gh pr view --json merged` are **not
+valid fields** — the command errors out, which silently poisons any `||`
+fallback in a shell loop. Check release state via `gh api`, as above.
 
 ## Rollback (before you Approve)
 
