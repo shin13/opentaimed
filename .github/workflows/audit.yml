@@ -3,11 +3,22 @@ name: audit
 # Weekly dependency CVE scan. Complements Dependabot: Dependabot opens
 # version-bump PRs; pip-audit flags known CVEs in the exact *locked* runtime
 # set. Runtime deps only (--no-dev): test/lint deps do not ship to users.
+#
+# The issue lifecycle is closed-loop: `alert` files (or comments on) a
+# `dependency-cve` issue quoting the pip-audit output verbatim, and `resolve`
+# closes it on the next green run. Both matter — an issue left open forever
+# makes the dedup lookup in `alert` mistake a stale issue for a current one, so
+# the next, different CVE only ever arrives as a comment on the wrong report.
 
 on:
   schedule:
     - cron: "0 19 * * 1"   # Monday 19:00 UTC = Tuesday 03:00 Asia/Taipei
   workflow_dispatch:
+    inputs:
+      simulate_vulnerable_dep:
+        description: "Audit a deliberately vulnerable pin instead of the lockfile (to validate the alert path)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,9 +27,15 @@ jobs:
   audit:
     name: pip-audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: taiwan-fda-mcp
+    outputs:
+      # pip-audit's findings must cross the job boundary: `alert` runs on a
+      # different runner and cannot read this job's filesystem. Without this,
+      # the issue body can only say "review the run log" (issue #78).
+      report: ${{ steps.pip_audit.outputs.report }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -35,13 +52,45 @@ jobs:
         run: uv export --frozen --no-dev --no-emit-project -o requirements.txt
 
       - name: Audit (pip-audit)
-        run: uvx pip-audit -r requirements.txt
+        id: pip_audit
+        env:
+          # cryptography 48.0.1 carries PYSEC-2026-3552/3553/3554 (the finding
+          # behind issue #78). Auditing it on demand exercises the alert path
+          # end-to-end without waiting for a real CVE to land in the lockfile.
+          SIMULATE: ${{ inputs.simulate_vulnerable_dep }}
+        run: |
+          set -euo pipefail
+          target=requirements.txt
+          if [ "$SIMULATE" = "true" ]; then
+            echo "simulate_vulnerable_dep=true -> auditing a known-vulnerable pin"
+            echo "cryptography==48.0.1" > simulated-requirements.txt
+            target=simulated-requirements.txt
+          fi
+
+          # `|| audit_status=$?` exempts the pipeline from `set -e` so the
+          # capture below still runs; the code is re-raised at the end.
+          # `pipefail` is load-bearing: without it the pipeline reports tee's
+          # exit code (always 0) and a real CVE would look green.
+          audit_status=0
+          uvx pip-audit -r "$target" 2>&1 | tee audit-output.txt || audit_status=$?
+
+          # Publish the findings as a job output so `alert` can quote them.
+          # Truncated to stay well inside GitHub's 65536-char issue-body limit;
+          # any line that would forge the heredoc delimiter is dropped.
+          {
+            echo 'report<<PIP_AUDIT_EOF'
+            head -c 50000 audit-output.txt | grep -vxF 'PIP_AUDIT_EOF' || true
+            echo 'PIP_AUDIT_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          exit "$audit_status"
 
   alert:
     name: file failure issue
     needs: audit
     if: failure()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write
@@ -54,13 +103,63 @@ jobs:
           LABEL: dependency-cve
           DESC: "Weekly pip-audit found a known CVE"
           TITLE: "pip-audit: known CVE in a locked dependency"
-          BODY: "The weekly `pip-audit` run flagged a known vulnerability in the locked runtime dependencies. Review the run log, then bump the dependency (or add a justified --ignore-vuln to audit.yml)."
+          BODY: "The weekly `pip-audit` run failed. Either it flagged a known vulnerability in the locked runtime dependencies, or pip-audit itself errored — the captured output below says which. Fix by bumping the dependency, or by adding a justified `--ignore-vuln` to `.github/workflows/audit.yml`. This issue closes automatically on the next green audit run."
+          # Upstream-controlled text: passed as an env var and only ever
+          # expanded by printf '%s', never interpolated into the script.
+          REPORT: ${{ needs.audit.outputs.report }}
         run: |
           set -euo pipefail
+
+          # Renders the shared issue/comment payload: a lead paragraph, the
+          # pip-audit findings in a collapsed code block, then the run link.
+          compose() {
+            printf '%s\n' "$1"
+            if [ -n "${REPORT:-}" ]; then
+              printf '\n<details open><summary><b>pip-audit output</b></summary>\n\n```\n%s\n```\n\n</details>\n' "$REPORT"
+            else
+              printf '\n_No pip-audit output was captured — the job failed before the audit step ran. See the run log._\n'
+            fi
+            printf '\nRun: %s\n' "$RUN_URL"
+          }
+
           gh label create "$LABEL" -R "$REPO" --color B60205 --description "$DESC" --force
           existing=$(gh issue list -R "$REPO" --label "$LABEL" --state open --json number -q '.[0].number // empty')
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" -R "$REPO" --body "Flagged again on $(date -u +%Y-%m-%d). Run: $RUN_URL"
+            gh issue comment "$existing" -R "$REPO" \
+              --body "$(compose "Flagged again on $(date -u +%Y-%m-%d).")"
           else
-            gh issue create -R "$REPO" --label "$LABEL" --title "$TITLE" --body "$BODY"$'\n\n'"Run: $RUN_URL"
+            gh issue create -R "$REPO" --label "$LABEL" --title "$TITLE" \
+              --body "$(compose "$BODY")"
           fi
+
+  resolve:
+    name: close resolved issue
+    needs: audit
+    if: success()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Close any open dependency-cve issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LABEL: dependency-cve
+        run: |
+          set -euo pipefail
+          # Without this, a stale open issue makes the dedup branch in `alert`
+          # comment on an issue whose title and body describe the *previous*
+          # CVE, so a genuinely new finding never gets its own issue.
+          open=$(gh issue list -R "$REPO" --label "$LABEL" --state open --json number -q '.[].number' || true)
+          if [ -z "$open" ]; then
+            echo "No open $LABEL issue to close."
+            exit 0
+          fi
+          for number in $open; do
+            echo "Closing #$number"
+            gh issue close "$number" -R "$REPO" --reason completed \
+              --comment "pip-audit is green again as of $(date -u +%Y-%m-%d) — closing automatically. Run: $RUN_URL"
+          done
