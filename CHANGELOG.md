@@ -7,6 +7,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-08-11
+
 ### Fixed
 - `taiwan_fda_mcp.__version__` now reports the actual installed version. It was a
   hand-written literal stuck at `0.1.0` since the first release — wrong for every
@@ -324,7 +326,8 @@ shipped at the cut.
 - macOS 14+, Claude Desktop (stdio transport)
 - TFDA endpoints `mcp.fda.gov.tw` and `data.fda.gov.tw` as of 2026-05.
 
-[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/shin13/opentaimed/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/shin13/opentaimed/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/shin13/opentaimed/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/shin13/opentaimed/compare/v0.4.0...v0.5.0
