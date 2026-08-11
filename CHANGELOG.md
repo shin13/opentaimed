@@ -21,6 +21,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   still possible — a PyPI version is immutable, so the same mistake caught after
   upload could only be repaired by creating the Release by hand.
 
+### Changed
+- CI: the weekly `pip-audit` job (`audit.yml`) now runs a closed issue loop. The
+  auto-filed `dependency-cve` issue **quotes the pip-audit output verbatim** in
+  its body instead of saying "review the run log" — resolving issue #78 required
+  fetching the workflow log by hand just to learn which package and advisory IDs
+  were involved. A new `resolve` job **closes the issue automatically** on the
+  next green audit. The second half is not cosmetic: a permanently-open issue
+  makes the dedup lookup treat it as current, so the next, *different* CVE would
+  only ever have been appended as a comment to an issue whose title and body
+  describe the previous one. A `simulate_vulnerable_dep` workflow-dispatch input
+  (mirroring `smoke.yml`'s `simulate_failure`) makes the alert path testable on
+  demand rather than only when a real CVE lands.
+
 ## [0.7.1] — 2026-08-11
 
 ### Fixed
