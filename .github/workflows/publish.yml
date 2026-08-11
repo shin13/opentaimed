@@ -32,6 +32,35 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Deliberately the first step after checkout, and in `build` rather than
+      # `release`: it must fail BEFORE the manual `pypi` approval, while
+      # deleting the tag and re-cutting is still an option. A PyPI version is
+      # immutable, so the same failure discovered after upload is unrecoverable
+      # — the Release would have to be created by hand.
+      - name: Extract this version's CHANGELOG section
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          # Literal match on the opening heading (index, not a regex) so the
+          # dots in a version number cannot act as wildcards; the closing
+          # condition is a genuine pattern — any next version heading ends it.
+          awk -v ver="$version" \
+            'index($0, "## [" ver "]") == 1 {f=1; next} /^## \[/ {f=0} f' \
+            CHANGELOG.md > release-notes.md
+          grep -q '[^[:space:]]' release-notes.md \
+            || { echo "::error::No CHANGELOG section found for [$version] — promote [Unreleased] before tagging"; exit 1; }
+
+      - name: Upload release notes artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-notes
+          # Kept out of `dist/` on purpose: gh-action-pypi-publish uploads
+          # everything under that directory to PyPI.
+          path: release-notes.md
+
       - name: Set up uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
@@ -90,22 +119,12 @@ jobs:
       # identity that Trusted Publishing exchanges for a PyPI credential.
       contents: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Extract this version's CHANGELOG section
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          # Literal match on the opening heading (index, not a regex) so the
-          # dots in a version number cannot act as wildcards; the closing
-          # condition is a genuine pattern — any next version heading ends it.
-          awk -v ver="$version" \
-            'index($0, "## [" ver "]") == 1 {f=1; next} /^## \[/ {f=0} f' \
-            CHANGELOG.md > release-notes.md
-          # A missing or renamed heading yields a blank file. Fail loudly rather
-          # than publishing an empty Release.
-          grep -q '[^[:space:]]' release-notes.md \
-            || { echo "::error::No CHANGELOG section found for [$version]"; exit 1; }
+      # The notes were extracted and validated in `build`, before the approval
+      # gate. No checkout is needed here — same as the publish job.
+      - name: Download release notes artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-notes
 
       - name: Create the Release
         env:
