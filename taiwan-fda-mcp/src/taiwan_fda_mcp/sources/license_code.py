@@ -83,3 +83,49 @@ def license_str_to_code(license_str: str) -> str:
         )
 
     return f"{prefix_code}{number.zfill(6)}"
+
+
+# Reverse of LICENSE_PREFIX_MAP. Safe to build mechanically: all 27 codes are
+# distinct (asserted by test_reverse_map_is_unambiguous), so the inverse is a
+# function, not a relation.
+LICENSE_CODE_TO_PREFIX: dict[str, str] = {v: k for k, v in LICENSE_PREFIX_MAP.items()}
+
+_LICENSE_CODE_RE = re.compile(r"^\d{8}$")
+
+
+def license_code_to_str(code: str) -> str:
+    """Convert '02021571' back to '衛署藥輸字第021571號'.
+
+    The inverse of `license_str_to_code`. Needed because the NHI drug file
+    identifies a licence only by the 8-digit code embedded in its
+    藥品代碼超連結, while every other tool in this server speaks the full
+    Chinese licence string.
+
+    Args:
+        code: 8-digit licence code (2-digit prefix + 6-digit serial).
+
+    Returns:
+        Full Chinese licence string.
+
+    Raises:
+        InvalidLicenseError: not exactly 8 digits — including the six-digit
+            legacy codes carried by 328 rows of the NHI file, which belong to a
+            different numbering space and cannot be mapped.
+        LicensePrefixUnsupportedError: 2-digit prefix not in the verified table.
+    """
+    value = (code or "").strip()
+    if not _LICENSE_CODE_RE.match(value):
+        raise InvalidLicenseError(
+            RCode.INVALID_LICENSE,
+            f"License code must be exactly 8 digits: {code!r}",
+        )
+
+    prefix = LICENSE_CODE_TO_PREFIX.get(value[:2])
+    if prefix is None:
+        raise LicensePrefixUnsupportedError(
+            RCode.LICENSE_PREFIX_UNSUPPORTED,
+            f"License code prefix not in verified mapping table: {value[:2]!r}",
+            detail={"supported_codes": sorted(LICENSE_CODE_TO_PREFIX)},
+        )
+
+    return f"{prefix}第{value[2:]}號"

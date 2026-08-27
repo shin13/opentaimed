@@ -7,7 +7,11 @@ from taiwan_fda_mcp.exceptions import (
     InvalidLicenseError,
     LicensePrefixUnsupportedError,
 )
-from taiwan_fda_mcp.sources.license_code import license_str_to_code
+from taiwan_fda_mcp.sources.license_code import (
+    LICENSE_PREFIX_MAP,
+    license_code_to_str,
+    license_str_to_code,
+)
 
 
 @pytest.mark.parametrize(
@@ -56,3 +60,31 @@ def test_malformed_input_raises() -> None:
         license_str_to_code("not a license")
     with pytest.raises(InvalidLicenseError):
         license_str_to_code("")
+
+
+def test_reverse_map_is_unambiguous() -> None:
+    """Every 2-digit code maps back to exactly one prefix, so the reverse is well-defined."""
+    codes = list(LICENSE_PREFIX_MAP.values())
+    assert len(codes) == len(set(codes))
+
+
+@pytest.mark.parametrize("prefix", sorted(LICENSE_PREFIX_MAP))
+def test_round_trip_every_prefix(prefix: str) -> None:
+    original = f"{prefix}第048092號"
+    assert license_code_to_str(license_str_to_code(original)) == original
+
+
+def test_known_real_code_from_the_nhi_file() -> None:
+    # licId 01049322 appears in tests/fixtures/nhi_drug_items_sample.csv
+    assert license_code_to_str("01049322") == "衛署藥製字第049322號"
+
+
+def test_six_digit_legacy_code_is_rejected() -> None:
+    # 328 licIds in the NHI file are six-digit legacy forms with no 許可證 prefix.
+    with pytest.raises(InvalidLicenseError):
+        license_code_to_str("000238")
+
+
+def test_unknown_prefix_code_is_rejected() -> None:
+    with pytest.raises(LicensePrefixUnsupportedError):
+        license_code_to_str("99123456")

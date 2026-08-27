@@ -1,0 +1,13 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "nhi_code": {
+      "description": "健保藥品代號, e.g. \"AC49322100\".",
+      "type": "string"
+    }
+  },
+  "required": [
+    "nhi_code"
+  ],
+  "type": "object"
+}

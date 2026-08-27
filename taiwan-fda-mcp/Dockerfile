@@ -14,6 +14,12 @@ COPY . .
 RUN uv sync --frozen --no-dev \
     && chown -R appuser:appuser /app
 
+# On-disk cache root for the stores (Dataset 37/42 + NHI). docker-compose mounts
+# a named volume here so the 92 MB NHI payload (and the Dataset caches) survive
+# redeploys instead of cold-downloading on the first query every time. Created
+# appuser-owned so the fresh named volume inherits a writable owner.
+RUN mkdir -p /cache && chown appuser:appuser /cache
+
 # Shared-service defaults; 0.0.0.0 binds all interfaces INSIDE the container
 # (the port is never published to the host — see docker-compose.yml).
 ENV MCP_TRANSPORT=http \

@@ -2,6 +2,7 @@
 # brief: Shared Pydantic models for drug-license metadata, insert content, and citations.
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -99,3 +100,58 @@ class Citation(BaseModel):
 
 
 InsertSection.model_rebuild()
+
+
+class NhiDrugItem(BaseModel):
+    """One currently-effective NHI drug item (健保用藥品項), internal shape.
+
+    Sourced from 健保署 open data A21030000I-E41001-001. Only rows whose
+    有效迄日 is the 9991231 sentinel are represented — exactly one per
+    藥品代號 (measured: 45,175 codes, 45,175 current rows).
+    """
+
+    nhi_code: str
+    name_zh: str
+    name_en: str
+    ingredient: str
+    form: str
+    spec_amount: str
+    spec_unit: str
+    single_or_compound: str
+    drug_classify: str
+    atc_code: str
+    reimbursement_status: Literal["reimbursed", "delisted", "not_priced"]
+    price: float | None
+    price_raw: str
+    effective_start: str | None
+    effective_end: str | None
+    vendor: str
+    manufacturer: str
+    payment_rule_sections: list[str]
+    payment_rule_urls: list[str]
+    license_no: str | None
+
+
+class NhiCacheMeta(BaseModel):
+    """Sidecar recorded next to the NHI item cache.
+
+    `payload_sha256` is the version identity. The two upstream timestamps are
+    stored only to decide whether a download is worth attempting: neither is
+    trusted, because the same metadata response has been observed carrying a
+    `modified` 13 days later than its own `resourceModified`.
+    """
+
+    payload_sha256: str
+    content_length: int
+    row_count: int
+    modified: str
+    resource_modified: str
+    downloaded_at: str
+
+
+class NhiMetadata(BaseModel):
+    """The three fields read from the 2 KB NHI dataset-metadata probe."""
+
+    modified: str
+    resource_modified: str
+    number_of_data: int

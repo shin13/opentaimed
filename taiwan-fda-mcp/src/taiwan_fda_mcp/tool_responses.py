@@ -500,6 +500,145 @@ class CheckInsertUpdatesResponse(BaseModel):
     )
 
 
+class NhiDrugItemRow(BaseModel):
+    """One currently-effective NHI drug item, as returned to an MCP client."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nhi_code: str = Field(description="健保藥品代號 (e.g. AC49322100).")
+    name_zh: str = Field(description="藥品中文名稱.")
+    name_en: str = Field(description="藥品英文名稱.")
+    ingredient: str = Field(description="分類分組名稱 — ingredient, form, and strength.")
+    form: str = Field(description="劑型.")
+    spec_amount: str = Field(default="", description="規格量 (often blank upstream).")
+    spec_unit: str = Field(default="", description="規格單位 (often blank upstream).")
+    single_or_compound: str = Field(default="", description="單方 or 複方.")
+    drug_classify: str = Field(default="", description="藥品分類 (e.g. BA/BE學名藥, 研發廠).")
+    atc_code: str = Field(default="", description="ATC 代碼.")
+    reimbursement_status: Literal["reimbursed", "delisted", "not_priced"] = Field(
+        description=(
+            "'reimbursed' = NHI lists a unit price. 'delisted' = 支付價 is 0.00, "
+            "meaning 停止給付 — this is NOT a free drug. 'not_priced' = 支付價 is "
+            "'-'; 健保署未以單價列示，原因未載明，不要推論 (do NOT infer a reason)."  # noqa: RUF001
+        )
+    )
+    price: float | None = Field(
+        default=None,
+        description=(
+            "支付價 in TWD. Null whenever reimbursement_status is not 'reimbursed'. "
+            "Never present a null or a zero to the user as 'free'."
+        ),
+    )
+    price_raw: str = Field(
+        default="", description="Verbatim upstream 支付價 cell ('8.60' / '0.00' / '-')."
+    )
+    effective_start: str | None = Field(
+        default=None, description="有效起日 as ISO 'YYYY-MM-DD' (converted from ROC)."
+    )
+    effective_end: str | None = Field(
+        default=None, description="有效迄日; null means no end date (the 9991231 sentinel)."
+    )
+    vendor: str = Field(default="", description="藥商.")
+    manufacturer: str = Field(default="", description="製造廠名稱.")
+    payment_rule_sections: list[str] = Field(
+        default_factory=list,
+        description=(
+            "健保給付規定章節 codes, verbatim with the trailing dot ('1.2.1.'). An "
+            "empty list is 未載明 — the item carries no chapter reference (60.4% of "
+            "current rows) — NOT 'no restrictions apply'."
+        ),
+    )
+    payment_rule_urls: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Official NHI chapter PDF URLs. Passed through, NOT fetched — the "
+            "client opens them if the regulation text is needed."
+        ),
+    )
+    license_no: str | None = Field(
+        default=None,
+        description=(
+            "TFDA 許可證字號 derived from the item's official licence link; pass it "
+            "to get_package_insert. Null when the upstream link carries a six-digit "
+            "legacy code that maps to no known prefix — do NOT guess the licence."
+        ),
+    )
+
+
+class GetNhiDrugItemResponse(BaseModel):
+    """Response shape for `get_nhi_drug_item` (forward: 健保代碼 → item)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nhi_code: str = Field(description="Echo of the nhi_code the caller passed.")
+    error: ErrorInfo | None = Field(default=None, description="Null on success.")
+    item_on_file: bool = Field(
+        default=False,
+        description=(
+            "True iff this 健保代碼 exists in the NHI drug-item file. False means "
+            "查無此健保代碼 — usually a mistyped code."
+        ),
+    )
+    item: NhiDrugItemRow | None = Field(default=None, description="Null when not on file.")
+    source_url: str | None = Field(default=None, description="NHI dataset URL (cite as evidence).")
+    dataset_retrieved_at: str | None = Field(
+        default=None, description="ISO 8601 UTC time the NHI index was last loaded."
+    )
+    dataset_age_hours: float | None = Field(
+        default=None, description="Age of the NHI index in hours at response time."
+    )
+    is_stale: bool = Field(
+        default=False,
+        description="True iff the index is past its TTL and a background reload is under way.",
+    )
+    attribution: Attribution | None = Field(
+        default=None, description="Official-data vs third-party-wrapper origin."
+    )
+
+
+class ListNhiDrugItemsResponse(BaseModel):
+    """Response shape for `list_nhi_drug_items` (reverse: 許可證 → items)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    license_no: str = Field(description="Echo of the license_no the caller passed.")
+    error: ErrorInfo | None = Field(default=None, description="Null on success.")
+    nhi_listed: bool = Field(
+        default=False,
+        description=(
+            "True iff this licence has at least one NHI item. False is a FACT, not "
+            "a failure: 此藥未納入健保給付. It applies to 42.9% of active licences, so "
+            "report it as 'not covered by NHI', never as 查無此藥."
+        ),
+    )
+    any_reimbursed: bool = Field(
+        default=False,
+        description=(
+            "True iff at least one item is currently reimbursed. False with "
+            "nhi_listed true means every item is 停止給付."
+        ),
+    )
+    items: list[NhiDrugItemRow] = Field(
+        default_factory=list, description="Items for this licence (avg 1.88, max 23)."
+    )
+    total: int = Field(default=0, description="Total matching items before `limit` was applied.")
+    truncated: bool = Field(default=False, description="True iff `items` was capped by `limit`.")
+    source_url: str | None = Field(default=None, description="NHI dataset URL (cite as evidence).")
+    dataset_retrieved_at: str | None = Field(
+        default=None, description="ISO 8601 UTC time the NHI index was last loaded."
+    )
+    dataset_age_hours: float | None = Field(
+        default=None, description="Age of the NHI index in hours at response time."
+    )
+    is_stale: bool = Field(
+        default=False,
+        description="True iff the index is past its TTL and a background reload is under way.",
+    )
+    attribution: Attribution | None = Field(
+        default=None, description="Official-data vs third-party-wrapper origin."
+    )
+
+
 __all__ = [
     "AdditionalSection",
     "Attribution",
@@ -510,10 +649,13 @@ __all__ = [
     "ErrorInfo",
     "FactoryEntity",
     "GetDrugAppearanceResponse",
+    "GetNhiDrugItemResponse",
     "GetPackageInsertResponse",
     "ImageRef",
     "IngredientGroup",
     "InsertVersionInfo",
+    "ListNhiDrugItemsResponse",
+    "NhiDrugItemRow",
     "SearchByIngredientResponse",
     "SearchDrugsResponse",
     "SectionTocEntry",

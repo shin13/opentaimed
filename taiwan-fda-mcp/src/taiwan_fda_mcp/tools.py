@@ -20,12 +20,14 @@ from taiwan_fda_mcp.exceptions import (
     LicensePrefixUnsupportedError,
     RCode,
 )
-from taiwan_fda_mcp.models import DrugInsert, DrugLicense, InsertSection
+from taiwan_fda_mcp.models import DrugInsert, DrugLicense, InsertSection, NhiDrugItem
 from taiwan_fda_mcp.sources.insert.cache import InsertCache, get_insert_cache
 from taiwan_fda_mcp.sources.insert.client import fetch_drug_insert, fetch_drug_insert_bytes
 from taiwan_fda_mcp.sources.insert.html_text import html_to_text
 from taiwan_fda_mcp.sources.insert.throttle import InsertEgressThrottle, get_insert_throttle
 from taiwan_fda_mcp.sources.license_code import license_str_to_code
+from taiwan_fda_mcp.sources.nhi.client import NHI_DOWNLOAD_PATH
+from taiwan_fda_mcp.sources.nhi.store import get_nhi_store
 from taiwan_fda_mcp.sources.opendata.appearance_store import get_appearance_store
 from taiwan_fda_mcp.sources.opendata.client import fetch_dataset37
 from taiwan_fda_mcp.sources.opendata.dataset37 import (
@@ -46,10 +48,13 @@ from taiwan_fda_mcp.tool_responses import (
     ErrorInfo,
     FactoryEntity,
     GetDrugAppearanceResponse,
+    GetNhiDrugItemResponse,
     GetPackageInsertResponse,
     ImageRef,
     IngredientGroup,
     InsertVersionInfo,
+    ListNhiDrugItemsResponse,
+    NhiDrugItemRow,
     SearchByIngredientResponse,
     SearchDrugsResponse,
     SectionTocEntry,
@@ -95,6 +100,15 @@ _ATTRIBUTION = Attribution(
     data_source="Taiwan FDA (TFDA) — mcp.fda.gov.tw GetDrugDoc API + data.fda.gov.tw opendata",
     data_official=True,
     wrapper="taiwan-fda-mcp (independent open-source project, NOT a TFDA product)",
+)
+
+# NHI responses cite a different agency, so they carry their own attribution.
+_NHI_ATTRIBUTION = Attribution(
+    data_source=(
+        "衛生福利部中央健康保險署 (健保署, NHI) — info.nhi.gov.tw 開放資料 A21030000I-E41001-001"
+    ),
+    data_official=True,
+    wrapper="taiwan-fda-mcp (independent open-source project, NOT an NHI product)",
 )
 
 # Dataset 42 (drug appearance) — export URL cited in every response, and the
@@ -1298,6 +1312,85 @@ def _field_text(sections: list[InsertSection], wanted_number: str, *, fold_title
     """Resolve a named field's section number to its full subtree text."""
     node = _find_section(sections, wanted_number)
     return _resolve_section_text(node, fold_titles=fold_titles) if node else ""
+
+
+def _nhi_row(item: NhiDrugItem) -> NhiDrugItemRow:
+    """Map the internal NHI item onto the public row shape."""
+    return NhiDrugItemRow(**item.model_dump())
+
+
+async def get_nhi_drug_item(
+    nhi_code: str,
+    *,
+    settings: Settings | None = None,
+) -> GetNhiDrugItemResponse:
+    """Return the NHI drug item for one 健保代碼 (forward lookup)."""
+    s = settings or get_settings()
+    store = get_nhi_store()
+    source_url = f"{s.NHI_BASE_URL.rstrip('/')}{NHI_DOWNLOAD_PATH}"
+    try:
+        by_code, _ = await store.get_indexes(s)
+    except DatasetFetchError as exc:
+        return GetNhiDrugItemResponse(
+            nhi_code=nhi_code,
+            error=ErrorInfo(code=exc.code.name, message=exc.message),
+            attribution=_NHI_ATTRIBUTION,
+        )
+
+    retrieved_at, age_hours, is_stale = store.freshness(s)
+    item = by_code.get(nhi_code.strip())
+    return GetNhiDrugItemResponse(
+        nhi_code=nhi_code,
+        item_on_file=item is not None,
+        item=_nhi_row(item) if item is not None else None,
+        source_url=source_url,
+        dataset_retrieved_at=retrieved_at,
+        dataset_age_hours=age_hours,
+        is_stale=is_stale,
+        attribution=_NHI_ATTRIBUTION,
+    )
+
+
+async def list_nhi_drug_items(
+    license_no: str,
+    limit: int = 25,
+    *,
+    settings: Settings | None = None,
+) -> ListNhiDrugItemsResponse:
+    """Return every NHI item registered under one 許可證字號 (reverse lookup)."""
+    s = settings or get_settings()
+    store = get_nhi_store()
+    source_url = f"{s.NHI_BASE_URL.rstrip('/')}{NHI_DOWNLOAD_PATH}"
+    try:
+        _, by_licence = await store.get_indexes(s)
+    except DatasetFetchError as exc:
+        return ListNhiDrugItemsResponse(
+            license_no=license_no,
+            error=ErrorInfo(code=exc.code.name, message=exc.message),
+            attribution=_NHI_ATTRIBUTION,
+        )
+
+    retrieved_at, age_hours, is_stale = store.freshness(s)
+    matches = by_licence.get(license_no.strip(), [])
+    capped = matches[:limit] if limit > 0 else matches
+    return ListNhiDrugItemsResponse(
+        license_no=license_no,
+        nhi_listed=bool(matches),
+        any_reimbursed=any(m.reimbursement_status == "reimbursed" for m in matches),
+        items=[_nhi_row(m) for m in capped],
+        total=len(matches),
+        truncated=len(capped) < len(matches),
+        source_url=source_url,
+        dataset_retrieved_at=retrieved_at,
+        dataset_age_hours=age_hours,
+        is_stale=is_stale,
+        attribution=_NHI_ATTRIBUTION,
+    )
+
+
+async def nhi_shutdown() -> None:
+    """Cancel the NHI store's in-flight background reload. Idempotent."""
+    await get_nhi_store().shutdown()
 
 
 __all__ = [

@@ -116,3 +116,15 @@ async def test_every_insert_carries_attribution(license_no: str):
     assert resp.attribution is not None
     assert resp.attribution.wrapper.strip(), "attribution.wrapper empty"
     assert resp.attribution.data_official is True
+
+
+async def test_smoke_nhi_probe_is_reachable():
+    """The NHI metadata probe is the cheap half of the two-tier refresh.
+
+    Import stays function-local to match this file's convention (see the
+    module-level NOTE) and keep collection free of schema-cache side effects.
+    """
+    from taiwan_fda_mcp.sources.nhi.client import probe_metadata
+
+    meta = await probe_metadata("https://info.nhi.gov.tw", timeout=20.0)
+    assert meta.number_of_data > 100_000  # noqa: PLR2004

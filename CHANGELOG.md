@@ -7,7 +7,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-27
+
 ### Added
+- Two NHI tools, `get_nhi_drug_item` and `list_nhi_drug_items`, backed by
+  健保署 open data A21030000I-E41001-001 (健保用藥品項查詢項目檔). They answer
+  reimbursement status, 支付價, and 給付規定 chapter references, and carry the
+  official 健保代碼 ↔ 許可證字號 mapping so a chart code resolves to a 仿單.
+  Delisted items (支付價 0.00) are included deliberately: 「此藥已停止給付」and
+  「查無此藥」are different clinical answers. 給付規定 full text is not served —
+  the chapter code and the official PDF URL are, and the separate
+  `nhi-knowledge-extractor` project holds the text, joined on the same official
+  chapter numbering. See ADR-0014.
 - CI: `publish.yml` now creates the GitHub Release itself on a version tag, with
   the body extracted from this file's section for that version. Creating the
   Release had never once happened as part of a release — all eight existing ones
@@ -33,6 +44,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   describe the previous one. A `simulate_vulnerable_dep` workflow-dispatch input
   (mirroring `smoke.yml`'s `simulate_failure`) makes the alert path testable on
   demand rather than only when a real CVE lands.
+
+### Fixed
+- Deployment: the shared HTTP service (`docker-compose.yml`) now mounts a named
+  `fda-cache` volume for the on-disk store caches (Dataset 37/42 + NHI). Without
+  it the caches lived in the ephemeral container filesystem, so every redeploy
+  cold-blocked the first NHI query on a fresh 92 MB / >120 s download. The four
+  NHI env knobs are also documented in `.env.example` (previously absent). Keep
+  the volume across redeploys; the first deploy against an empty one still pays
+  the download once.
 
 ## [0.7.1] — 2026-08-11
 
@@ -353,7 +373,8 @@ shipped at the cut.
 - macOS 14+, Claude Desktop (stdio transport)
 - TFDA endpoints `mcp.fda.gov.tw` and `data.fda.gov.tw` as of 2026-05.
 
-[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/shin13/opentaimed/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/shin13/opentaimed/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/shin13/opentaimed/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/shin13/opentaimed/compare/v0.5.0...v0.6.0

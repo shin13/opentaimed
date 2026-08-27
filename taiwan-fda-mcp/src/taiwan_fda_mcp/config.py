@@ -63,6 +63,18 @@ class Settings(BaseSettings):
     )
     DATASET42_TTL_HOURS: int = 24
 
+    # --- NHI drug items (健保用藥品項, A21030000I-E41001). Two-tier refresh: a
+    # 2 KB metadata probe MAY block a query (~0.6 s measured), the 92 MB CSV
+    # payload never does. Neither ADR-0012's blocking refresh nor ADR-0013's
+    # plain SWR applies, because only this upstream offers a cheap freshness
+    # probe — TFDA's opendata is ZIP-download-only.
+    NHI_BASE_URL: str = "https://info.nhi.gov.tw"
+    NHI_CACHE_DIR: Path = Field(
+        default_factory=lambda: Path(user_cache_dir("taiwan-fda-mcp")) / "nhi"
+    )
+    NHI_TTL_HOURS: int = 24
+    NHI_PROBE_TIMEOUT_SECONDS: float = Field(default=5.0, gt=0)
+
     LOG_LEVEL: str = "INFO"
 
     # --- Transport (ADR-0010): stdio for individual `uvx` use (default),

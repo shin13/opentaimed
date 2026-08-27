@@ -28,6 +28,8 @@ TOOL_NAMES = [
     "get_package_insert",
     "check_insert_updates",
     "get_drug_appearance",
+    "get_nhi_drug_item",
+    "list_nhi_drug_items",
 ]
 
 
