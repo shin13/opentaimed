@@ -2,15 +2,20 @@
 # brief: Parse the NHI drug-item CSV, manage its on-disk cache, and gate payload integrity.
 
 import csv
+import hashlib
 import io
+import json
 import re
+from pathlib import Path
 from typing import Literal
 
 from taiwan_fda_mcp.exceptions import (
+    DatasetFetchError,
     InvalidLicenseError,
     LicensePrefixUnsupportedError,
+    RCode,
 )
-from taiwan_fda_mcp.models import NhiDrugItem
+from taiwan_fda_mcp.models import NhiCacheMeta, NhiDrugItem
 from taiwan_fda_mcp.sources.license_code import license_code_to_str
 
 # The 20 columns the upstream CSV must carry, in order. Used as a content
@@ -148,3 +153,107 @@ def parse_rows(text: str) -> list[NhiDrugItem]:
             )
         )
     return result
+
+
+_CACHE_FILE = "nhi_items.json"
+_META_FILE = "nhi_meta.json"
+
+
+def payload_sha256(raw: bytes) -> str:
+    """Hex sha256 of the raw payload — the cache's version identity."""
+    return hashlib.sha256(raw).hexdigest()
+
+
+def validate_payload(raw: bytes, content_length: int | None) -> str:
+    """Run all three integrity gates and return the decoded CSV text.
+
+    Gate 1 — byte count against Content-Length, catching a truncated transfer.
+    Skipped when the header is absent rather than assumed.
+    Gate 2 — the header row against EXPECTED_COLUMNS, catching HTTP 200 with a
+    wrong body.
+    Gate 3 — at least one currently-effective row, catching a well-formed but
+    empty file.
+
+    `numberOfData` is deliberately NOT a gate: it is a semantic count that grows
+    when NHI adds rows, and the probe-to-download window is over two minutes
+    wide, so equality would fail on exactly the good case.
+
+    Raises:
+        DatasetFetchError: any gate fails.
+    """
+    if content_length is not None and len(raw) != content_length:
+        raise DatasetFetchError(
+            RCode.DATASET_FETCH_FAILED,
+            "NHI payload truncated",
+            detail={"expected_bytes": content_length, "received_bytes": len(raw)},
+        )
+
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise DatasetFetchError(RCode.DATASET_PARSE_FAILED, "NHI payload is not UTF-8") from exc
+
+    header = next(csv.reader(io.StringIO(text)), [])
+    if tuple(h.strip() for h in header) != EXPECTED_COLUMNS:
+        raise DatasetFetchError(
+            RCode.DATASET_PARSE_FAILED,
+            "NHI payload column header does not match the expected 20 columns",
+            detail={"received_header": header[:5]},
+        )
+
+    if not parse_rows(text):
+        raise DatasetFetchError(RCode.DATASET_PARSE_FAILED, "NHI payload contains no current rows")
+
+    return text
+
+
+def write_to_cache(rows: list[NhiDrugItem], cache_dir: Path) -> None:
+    """Persist parsed rows to the JSON cache file."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / _CACHE_FILE).write_text(
+        json.dumps([r.model_dump() for r in rows], ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def load_from_cache(cache_dir: Path) -> list[NhiDrugItem] | None:
+    """Load cached rows, or None if the cache file is missing."""
+    path = cache_dir / _CACHE_FILE
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise DatasetFetchError(
+            RCode.DATASET_PARSE_FAILED,
+            f"Corrupt NHI item cache at {path}",
+            detail={"error": str(exc)},
+        ) from exc
+    return [NhiDrugItem(**row) for row in payload]
+
+
+def write_meta(meta: NhiCacheMeta, cache_dir: Path) -> None:
+    """Persist the version sidecar next to the item cache."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / _META_FILE).write_text(meta.model_dump_json(), encoding="utf-8")
+
+
+def read_meta(cache_dir: Path) -> NhiCacheMeta | None:
+    """Read the version sidecar, or None if it is missing or unreadable.
+
+    A missing sidecar is not an error: it simply forces the next refresh to
+    download rather than trust a timestamp comparison.
+    """
+    path = cache_dir / _META_FILE
+    if not path.exists():
+        return None
+    try:
+        return NhiCacheMeta.model_validate_json(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+
+def cache_mtime(cache_dir: Path) -> float | None:
+    """Epoch mtime of the item cache file, or None if absent."""
+    path = cache_dir / _CACHE_FILE
+    return path.stat().st_mtime if path.exists() else None

@@ -1,11 +1,25 @@
 # path: tests/unit/test_nhi_dataset.py
 # brief: Parsing, ROC dates, and status derivation for the NHI drug-item file.
 
+import hashlib
 from pathlib import Path
 
 import pytest
 
-from taiwan_fda_mcp.sources.nhi.dataset import parse_rows, roc_to_iso
+from taiwan_fda_mcp.exceptions import DatasetFetchError
+from taiwan_fda_mcp.models import NhiCacheMeta
+from taiwan_fda_mcp.sources.nhi.dataset import (
+    EXPECTED_COLUMNS,
+    cache_mtime,
+    load_from_cache,
+    parse_rows,
+    payload_sha256,
+    read_meta,
+    roc_to_iso,
+    validate_payload,
+    write_meta,
+    write_to_cache,
+)
 
 _FIXTURE = Path(__file__).parent.parent / "fixtures" / "nhi_drug_items_sample.csv"
 
@@ -89,3 +103,67 @@ def test_bom_is_stripped():
     """The live download is UTF-8 with BOM; the first column name must still match."""
     rows_with_bom = parse_rows("﻿" + _FIXTURE.read_text(encoding="utf-8"))
     assert len(rows_with_bom) == 7  # noqa: PLR2004
+
+
+def _good_bytes() -> bytes:
+    return _FIXTURE.read_text(encoding="utf-8").encode("utf-8")
+
+
+def test_validate_payload_accepts_a_good_body():
+    raw = _good_bytes()
+    assert validate_payload(raw, len(raw)) == raw.decode("utf-8")
+
+
+def test_validate_payload_rejects_a_truncated_transfer():
+    raw = _good_bytes()
+    with pytest.raises(DatasetFetchError, match="truncated"):
+        validate_payload(raw, len(raw) + 1)
+
+
+def test_validate_payload_skips_the_length_gate_when_the_header_is_absent():
+    raw = _good_bytes()
+    assert validate_payload(raw, None) == raw.decode("utf-8")
+
+
+def test_validate_payload_rejects_http_200_with_a_wrong_body():
+    """Observed three times on this API — a 200 is never success on its own."""
+    body = b"Not found"
+    with pytest.raises(DatasetFetchError, match="column"):
+        validate_payload(body, len(body))
+
+
+def test_validate_payload_rejects_a_header_only_file():
+    body = (",".join(EXPECTED_COLUMNS) + "\n").encode("utf-8")
+    with pytest.raises(DatasetFetchError, match="no current rows"):
+        validate_payload(body, len(body))
+
+
+def test_payload_sha256_matches_hashlib():
+    raw = _good_bytes()
+    assert payload_sha256(raw) == hashlib.sha256(raw).hexdigest()
+
+
+def test_cache_round_trip(tmp_path):
+    rows = parse_rows(_FIXTURE.read_text(encoding="utf-8"))
+    write_to_cache(rows, tmp_path)
+    assert load_from_cache(tmp_path) == rows
+    assert cache_mtime(tmp_path) is not None
+
+
+def test_load_from_cache_returns_none_when_absent(tmp_path):
+    assert load_from_cache(tmp_path) is None
+    assert read_meta(tmp_path) is None
+    assert cache_mtime(tmp_path) is None
+
+
+def test_meta_round_trip(tmp_path):
+    meta = NhiCacheMeta(
+        payload_sha256="a" * 64,
+        content_length=96843587,
+        row_count=224553,
+        modified="2026-08-10T15:25:14",
+        resource_modified="2026-07-28 07:01:52",
+        downloaded_at="2026-08-27T03:00:00+00:00",
+    )
+    write_meta(meta, tmp_path)
+    assert read_meta(tmp_path) == meta

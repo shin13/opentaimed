@@ -130,3 +130,28 @@ class NhiDrugItem(BaseModel):
     payment_rule_sections: list[str]
     payment_rule_urls: list[str]
     license_no: str | None
+
+
+class NhiCacheMeta(BaseModel):
+    """Sidecar recorded next to the NHI item cache.
+
+    `payload_sha256` is the version identity. The two upstream timestamps are
+    stored only to decide whether a download is worth attempting: neither is
+    trusted, because the same metadata response has been observed carrying a
+    `modified` 13 days later than its own `resourceModified`.
+    """
+
+    payload_sha256: str
+    content_length: int
+    row_count: int
+    modified: str
+    resource_modified: str
+    downloaded_at: str
+
+
+class NhiMetadata(BaseModel):
+    """The three fields read from the 2 KB NHI dataset-metadata probe."""
+
+    modified: str
+    resource_modified: str
+    number_of_data: int
