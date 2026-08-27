@@ -43,6 +43,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   (mirroring `smoke.yml`'s `simulate_failure`) makes the alert path testable on
   demand rather than only when a real CVE lands.
 
+### Fixed
+- Deployment: the shared HTTP service (`docker-compose.yml`) now mounts a named
+  `fda-cache` volume for the on-disk store caches (Dataset 37/42 + NHI). Without
+  it the caches lived in the ephemeral container filesystem, so every redeploy
+  cold-blocked the first NHI query on a fresh 92 MB / >120 s download. The four
+  NHI env knobs are also documented in `.env.example` (previously absent). Keep
+  the volume across redeploys; the first deploy against an empty one still pays
+  the download once.
+
 ## [0.7.1] — 2026-08-11
 
 ### Fixed
