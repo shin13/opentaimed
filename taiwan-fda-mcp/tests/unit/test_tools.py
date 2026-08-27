@@ -18,6 +18,9 @@ from taiwan_fda_mcp.exceptions import DatasetFetchError, RCode
 from taiwan_fda_mcp.models import DrugInsert
 from taiwan_fda_mcp.sources.insert.cache import get_insert_cache
 from taiwan_fda_mcp.sources.insert.throttle import get_insert_throttle
+from taiwan_fda_mcp.sources.nhi.dataset import parse_rows as nhi_parse_rows
+from taiwan_fda_mcp.sources.nhi.dataset import write_to_cache as nhi_write_to_cache
+from taiwan_fda_mcp.sources.nhi.store import get_nhi_store
 from taiwan_fda_mcp.sources.opendata.appearance_store import get_appearance_store
 from taiwan_fda_mcp.sources.opendata.dataset37 import (
     load_from_cache,
@@ -35,7 +38,9 @@ from taiwan_fda_mcp.tool_responses import (
 from taiwan_fda_mcp.tools import (
     check_insert_updates,
     get_drug_appearance,
+    get_nhi_drug_item,
     get_package_insert,
+    list_nhi_drug_items,
     search_by_ingredient,
     search_drugs,
 )
@@ -1381,3 +1386,78 @@ def test_list_nhi_drug_items_response_defaults_are_safe():
     assert r.items == []
     assert r.total == 0
     assert r.truncated is False
+
+
+@pytest.fixture
+def nhi_settings(tmp_path, fixtures_dir):
+    """Settings with a pre-seeded NHI cache so the tools never hit the network."""
+    rows = nhi_parse_rows((fixtures_dir / "nhi_drug_items_sample.csv").read_text(encoding="utf-8"))
+    cache_dir = tmp_path / "nhi"
+    nhi_write_to_cache(rows, cache_dir)
+    get_nhi_store().reset()
+    return Settings(  # type: ignore[call-arg]
+        NHI_CACHE_DIR=cache_dir,
+        NHI_TTL_HOURS=24,
+        FDA_RATE_LIMIT_INTERVAL_SECONDS=0.0,
+        INSERT_THROTTLE_MIN_INTERVAL_SECONDS=0.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_nhi_drug_item_found(nhi_settings):
+    r = await get_nhi_drug_item("AC49322100", settings=nhi_settings)
+    assert r.item_on_file is True
+    assert r.item is not None
+    assert r.item.reimbursement_status == "reimbursed"
+    assert r.item.license_no == "衛署藥製字第049322號"
+    assert r.attribution is not None
+    assert r.attribution.data_official is True
+    assert "健保署" in r.attribution.data_source
+
+
+@pytest.mark.asyncio
+async def test_get_nhi_drug_item_not_found_is_a_fact_not_an_error(nhi_settings):
+    r = await get_nhi_drug_item("ZZ00000000", settings=nhi_settings)
+    assert r.item_on_file is False
+    assert r.item is None
+    assert r.error is None
+
+
+@pytest.mark.asyncio
+async def test_get_nhi_drug_item_trims_whitespace(nhi_settings):
+    r = await get_nhi_drug_item("  AC49322100  ", settings=nhi_settings)
+    assert r.item_on_file is True
+
+
+@pytest.mark.asyncio
+async def test_list_nhi_drug_items_returns_the_fan_out(nhi_settings):
+    r = await list_nhi_drug_items("衛署藥製字第049322號", settings=nhi_settings)
+    assert r.nhi_listed is True
+    assert r.total == 2  # noqa: PLR2004
+    assert r.truncated is False
+    assert sorted(i.nhi_code for i in r.items) == ["A049322100", "AC49322100"]
+    assert r.any_reimbursed is True  # AC49322100 is 8.60
+
+
+@pytest.mark.asyncio
+async def test_list_nhi_drug_items_unlisted_licence_is_a_fact_not_an_error(nhi_settings):
+    r = await list_nhi_drug_items("衛署藥輸字第999999號", settings=nhi_settings)
+    assert r.nhi_listed is False
+    assert r.any_reimbursed is False
+    assert r.items == []
+    assert r.error is None
+
+
+@pytest.mark.asyncio
+async def test_list_nhi_drug_items_all_delisted_sets_any_reimbursed_false(nhi_settings):
+    r = await list_nhi_drug_items("衛署藥製字第051728號", settings=nhi_settings)
+    assert r.nhi_listed is True
+    assert r.any_reimbursed is False
+
+
+@pytest.mark.asyncio
+async def test_list_nhi_drug_items_respects_limit(nhi_settings):
+    r = await list_nhi_drug_items("衛署藥製字第049322號", limit=1, settings=nhi_settings)
+    assert len(r.items) == 1
+    assert r.total == 2  # noqa: PLR2004
+    assert r.truncated is True
