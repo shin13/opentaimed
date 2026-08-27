@@ -7,6 +7,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-27
+
 ### Added
 - Two NHI tools, `get_nhi_drug_item` and `list_nhi_drug_items`, backed by
   健保署 open data A21030000I-E41001-001 (健保用藥品項查詢項目檔). They answer
@@ -371,7 +373,8 @@ shipped at the cut.
 - macOS 14+, Claude Desktop (stdio transport)
 - TFDA endpoints `mcp.fda.gov.tw` and `data.fda.gov.tw` as of 2026-05.
 
-[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/shin13/opentaimed/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/shin13/opentaimed/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/shin13/opentaimed/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/shin13/opentaimed/compare/v0.5.0...v0.6.0
