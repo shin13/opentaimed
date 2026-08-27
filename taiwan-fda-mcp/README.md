@@ -85,6 +85,9 @@ docker compose up -d --build
 - Single worker / single instance only (shared in-memory state is per-process;
   Redis required before scaling — ADR-0010).
 - Egress firewall must allow `mcp.fda.gov.tw`, `data.fda.gov.tw`, and `info.nhi.gov.tw`.
+- Store caches persist on the named `fda-cache` volume (mounted at `/cache`). Keep
+  it: without it, every redeploy cold-blocks the first NHI query on a fresh 92 MB
+  / >120 s download. The first deploy against an empty volume still pays that once.
 - Client URL: `https://<your-host>/mcp/` (trailing slash).
 
 ## Development

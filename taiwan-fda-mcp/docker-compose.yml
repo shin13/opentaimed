@@ -10,6 +10,14 @@ services:
       MCP_TRANSPORT: http
       MCP_HTTP_HOST: 0.0.0.0  # bind inside container only; NOT published to host
       MCP_HTTP_PORT: "8765"
+      # Point every on-disk store at the mounted cache volume. Without this the
+      # caches live in the ephemeral container FS, so each redeploy cold-blocks
+      # the first NHI query on a fresh 92 MB / >120 s download (Dataset 37/42 too).
+      DATASET37_CACHE_DIR: /cache/dataset37
+      DATASET42_CACHE_DIR: /cache/dataset42
+      NHI_CACHE_DIR: /cache/nhi
+    volumes:
+      - fda-cache:/cache      # persists the store caches across restarts/redeploys
     networks: [internal]
     # No `ports:` — the app is never reachable except through the proxy
     # (security invariant #8).
@@ -38,3 +46,6 @@ services:
 networks:
   internal:
     driver: bridge
+
+volumes:
+  fda-cache:                  # store caches (Dataset 37/42 + NHI); survives redeploys
