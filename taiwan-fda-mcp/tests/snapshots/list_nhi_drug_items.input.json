@@ -1,0 +1,18 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "license_no": {
+      "description": "full Chinese licence string (e.g. \"衛署藥製字第049322號\"),\nas returned by search_drugs.",
+      "type": "string"
+    },
+    "limit": {
+      "default": 25,
+      "description": "max items returned (default 25). `total` and `truncated` always\nreflect the full match set.",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "license_no"
+  ],
+  "type": "object"
+}

@@ -1,5 +1,5 @@
 # path: tests/unit/test_mcp_server.py
-# brief: Verify FastMCP server exposes the three tools and routes calls.
+# brief: Verify FastMCP server exposes the seven tools and routes calls.
 
 import json
 from pathlib import Path
@@ -88,6 +88,8 @@ async def test_lists_all_tools():
         "get_package_insert",
         "check_insert_updates",
         "get_drug_appearance",
+        "get_nhi_drug_item",
+        "list_nhi_drug_items",
     }
 
 

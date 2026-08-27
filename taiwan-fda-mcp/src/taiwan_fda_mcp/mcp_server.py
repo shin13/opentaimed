@@ -13,11 +13,14 @@ from taiwan_fda_mcp.coerce import coerce_json_array
 from taiwan_fda_mcp.config import get_settings
 from taiwan_fda_mcp.logging_config import configure_logging
 from taiwan_fda_mcp.resources import OTC_INSERT_STRUCTURE_MD, RX_INSERT_STRUCTURE_MD
+from taiwan_fda_mcp.sources.nhi.store import get_nhi_store
 from taiwan_fda_mcp.sources.opendata.appearance_store import get_appearance_store
 from taiwan_fda_mcp.tool_responses import (
     CheckInsertUpdatesResponse,
     GetDrugAppearanceResponse,
+    GetNhiDrugItemResponse,
     GetPackageInsertResponse,
+    ListNhiDrugItemsResponse,
     SearchByIngredientResponse,
     SearchDrugsResponse,
 )
@@ -28,7 +31,13 @@ from taiwan_fda_mcp.tools import (
     get_drug_appearance as _get_drug_appearance,
 )
 from taiwan_fda_mcp.tools import (
+    get_nhi_drug_item as _get_nhi_drug_item,
+)
+from taiwan_fda_mcp.tools import (
     get_package_insert as _get_package_insert,
+)
+from taiwan_fda_mcp.tools import (
+    list_nhi_drug_items as _list_nhi_drug_items,
 )
 from taiwan_fda_mcp.tools import (
     search_by_ingredient as _search_by_ingredient,
@@ -48,10 +57,11 @@ ResponseFormatLiteral = Literal["concise", "key", "detailed", "full"]
 
 @asynccontextmanager
 async def _lifespan(_server: FastMCP):
-    """Cancel background refresh tasks on graceful shutdown (ADR-0010 / 0013)."""
+    """Cancel background refresh tasks on graceful shutdown (ADR-0010 / 0013 / 0014)."""
     yield
     await _shutdown_refresh()
     await get_appearance_store().shutdown()
+    await get_nhi_store().shutdown()
 
 
 mcp: FastMCP = FastMCP(
@@ -138,7 +148,26 @@ mcp: FastMCP = FastMCP(
         "within this insert format's scope.\n\n"
         "If a tool returns an error, report it verbatim — do not silently fall "
         "back to training data. The user needs to know when official data was "
-        "unavailable."
+        "unavailable.\n"
+        "\n"
+        "健保給付查詢 (NHI reimbursement) — data from a SECOND agency:\n"
+        "  - This server now also serves 衛生福利部中央健康保險署 (NHI) open data. "
+        "TFDA (食藥署) answers 仿單 questions; NHI answers 給付/支付價 questions. "
+        "Always tell the user WHICH agency a fact came from.\n"
+        "  - 健保代碼 → drug: call `get_nhi_drug_item`, then `get_package_insert` "
+        "with the license_no it returns.\n"
+        "  - 藥名 → 健保給付: `search_drugs` → pick license_no → "
+        "`list_nhi_drug_items`.\n"
+        "  - `nhi_listed=false` means 此藥未納入健保給付 — it is a fact about NHI "
+        "coverage, NOT 查無此藥. This is true of 42.9% of active licences.\n"
+        "  - `reimbursement_status='delisted'` means 支付價 0.00 = 停止給付. NEVER "
+        "describe it as a free drug. `'not_priced'` means 支付價 is '-' and NHI "
+        "does not document why — report 未載明, do NOT infer a reason.\n"
+        "  - A delisted item's licence is often de-registered too, so "
+        "`get_package_insert` may find no insert for it. That is expected.\n"
+        "  - 給付規定 full text is NOT served here. `payment_rule_sections` gives "
+        "the official chapter code and `payment_rule_urls` the official PDF; cite "
+        "those rather than paraphrasing a regulation you have not read.\n"
     ),
 )
 
@@ -260,6 +289,68 @@ async def get_drug_appearance(license_no: str) -> GetDrugAppearanceResponse:
         dataset_retrieved_at, and attribution.
     """
     return await _get_drug_appearance(license_no=license_no)
+
+
+@mcp.tool
+async def get_nhi_drug_item(nhi_code: str) -> GetNhiDrugItemResponse:
+    """Look up one NHI drug item (健保用藥品項) by its 健保藥品代號.
+
+    Use this when the user has a 健保代碼 from a prescription, order entry, or
+    chart — "AC49322100 是什麼藥?" — and wants the drug's identity, its NHI
+    reimbursement status and price, and its 給付規定 chapter references.
+
+    The returned `license_no` is the TFDA 許可證字號; pass it to
+    get_package_insert for 仿單 clinical text. Note that an item whose
+    reimbursement_status is "delisted" often has no retrievable insert, because
+    its licence is usually de-registered too.
+
+    `reimbursement_status` has three values and they are NOT interchangeable:
+    "reimbursed" carries a unit price; "delisted" means 支付價 is 0.00, i.e.
+    停止給付 — never describe it as free; "not_priced" means 支付價 is "-", whose
+    reason NHI does not document — report it as 未載明 and do not infer one.
+
+    When `item_on_file` is false the code is not in the NHI file — say
+    「查無此健保代碼」, do not guess a drug.
+
+    Args:
+        nhi_code: 健保藥品代號, e.g. "AC49322100".
+
+    Returns:
+        GetNhiDrugItemResponse with item_on_file, the item, source_url,
+        dataset_retrieved_at, and attribution.
+    """
+    return await _get_nhi_drug_item(nhi_code=nhi_code)
+
+
+@mcp.tool
+async def list_nhi_drug_items(license_no: str, limit: int = 25) -> ListNhiDrugItemsResponse:
+    """List every NHI drug item (健保用藥品項) registered under one 許可證字號.
+
+    Use this after search_drugs to answer "這顆藥健保給不給付?" / "健保多少錢?" /
+    "這顆藥的給付規定是哪一章?". One licence maps to 1.88 items on average (up to
+    23) because each packaging variant gets its own 健保代碼.
+
+    `nhi_listed=false` is a FACT, not a failure: the licence exists at TFDA but
+    carries no NHI item, which is true of 42.9% of active licences. Report it as
+    「此藥未納入健保給付」— never as 查無此藥.
+
+    `any_reimbursed=false` with `nhi_listed=true` means every item is 停止給付.
+
+    `payment_rule_urls` are official NHI chapter PDFs, passed through and not
+    fetched by this server; open them client-side if the regulation text is
+    needed.
+
+    Args:
+        license_no: full Chinese licence string (e.g. "衛署藥製字第049322號"),
+            as returned by search_drugs.
+        limit: max items returned (default 25). `total` and `truncated` always
+            reflect the full match set.
+
+    Returns:
+        ListNhiDrugItemsResponse with nhi_listed, any_reimbursed, items, total,
+        truncated, source_url, dataset_retrieved_at, and attribution.
+    """
+    return await _list_nhi_drug_items(license_no=license_no, limit=limit)
 
 
 @mcp.tool

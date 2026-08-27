@@ -1,0 +1,284 @@
+{
+  "additionalProperties": false,
+  "description": "Response shape for `list_nhi_drug_items` (reverse: 許可證 → items).",
+  "properties": {
+    "any_reimbursed": {
+      "default": false,
+      "description": "True iff at least one item is currently reimbursed. False with nhi_listed true means every item is 停止給付.",
+      "type": "boolean"
+    },
+    "attribution": {
+      "anyOf": [
+        {
+          "description": "Per-response attribution — distinguishes official data from third-party wrapper.",
+          "properties": {
+            "data_official": {
+              "description": "True iff `data_source` is a government/official body.",
+              "type": "boolean"
+            },
+            "data_source": {
+              "description": "Authoritative data origin.",
+              "type": "string"
+            },
+            "wrapper": {
+              "description": "Identity of the (third-party) MCP server returning this response.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "data_source",
+            "data_official",
+            "wrapper"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Official-data vs third-party-wrapper origin."
+    },
+    "dataset_age_hours": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Age of the NHI index in hours at response time."
+    },
+    "dataset_retrieved_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO 8601 UTC time the NHI index was last loaded."
+    },
+    "error": {
+      "anyOf": [
+        {
+          "description": "Structured error block. `code` is the RCode name (string form, stable identifier).",
+          "properties": {
+            "code": {
+              "description": "Stable error code identifier (e.g. 'INSERT_NOT_FOUND').",
+              "type": "string"
+            },
+            "message": {
+              "description": "Human-readable error message in Traditional Chinese or English.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Null on success."
+    },
+    "is_stale": {
+      "default": false,
+      "description": "True iff the index is past its TTL and a background reload is under way.",
+      "type": "boolean"
+    },
+    "items": {
+      "description": "Items for this licence (avg 1.88, max 23).",
+      "items": {
+        "additionalProperties": false,
+        "description": "One currently-effective NHI drug item, as returned to an MCP client.",
+        "properties": {
+          "atc_code": {
+            "default": "",
+            "description": "ATC 代碼.",
+            "type": "string"
+          },
+          "drug_classify": {
+            "default": "",
+            "description": "藥品分類 (e.g. BA/BE學名藥, 研發廠).",
+            "type": "string"
+          },
+          "effective_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "有效迄日; null means no end date (the 9991231 sentinel)."
+          },
+          "effective_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "有效起日 as ISO 'YYYY-MM-DD' (converted from ROC)."
+          },
+          "form": {
+            "description": "劑型.",
+            "type": "string"
+          },
+          "ingredient": {
+            "description": "分類分組名稱 — ingredient, form, and strength.",
+            "type": "string"
+          },
+          "license_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "TFDA 許可證字號 derived from the item's official licence link; pass it to get_package_insert. Null when the upstream link carries a six-digit legacy code that maps to no known prefix — do NOT guess the licence."
+          },
+          "manufacturer": {
+            "default": "",
+            "description": "製造廠名稱.",
+            "type": "string"
+          },
+          "name_en": {
+            "description": "藥品英文名稱.",
+            "type": "string"
+          },
+          "name_zh": {
+            "description": "藥品中文名稱.",
+            "type": "string"
+          },
+          "nhi_code": {
+            "description": "健保藥品代號 (e.g. AC49322100).",
+            "type": "string"
+          },
+          "payment_rule_sections": {
+            "description": "健保給付規定章節 codes, verbatim with the trailing dot ('1.2.1.'). An empty list is 未載明 — the item carries no chapter reference (60.4% of current rows) — NOT 'no restrictions apply'.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "payment_rule_urls": {
+            "description": "Official NHI chapter PDF URLs. Passed through, NOT fetched — the client opens them if the regulation text is needed.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "支付價 in TWD. Null whenever reimbursement_status is not 'reimbursed'. Never present a null or a zero to the user as 'free'."
+          },
+          "price_raw": {
+            "default": "",
+            "description": "Verbatim upstream 支付價 cell ('8.60' / '0.00' / '-').",
+            "type": "string"
+          },
+          "reimbursement_status": {
+            "description": "'reimbursed' = NHI lists a unit price. 'delisted' = 支付價 is 0.00, meaning 停止給付 — this is NOT a free drug. 'not_priced' = 支付價 is '-'; 健保署未以單價列示，原因未載明，不要推論 (do NOT infer a reason).",
+            "enum": [
+              "reimbursed",
+              "delisted",
+              "not_priced"
+            ],
+            "type": "string"
+          },
+          "single_or_compound": {
+            "default": "",
+            "description": "單方 or 複方.",
+            "type": "string"
+          },
+          "spec_amount": {
+            "default": "",
+            "description": "規格量 (often blank upstream).",
+            "type": "string"
+          },
+          "spec_unit": {
+            "default": "",
+            "description": "規格單位 (often blank upstream).",
+            "type": "string"
+          },
+          "vendor": {
+            "default": "",
+            "description": "藥商.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "nhi_code",
+          "name_zh",
+          "name_en",
+          "ingredient",
+          "form",
+          "reimbursement_status"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "license_no": {
+      "description": "Echo of the license_no the caller passed.",
+      "type": "string"
+    },
+    "nhi_listed": {
+      "default": false,
+      "description": "True iff this licence has at least one NHI item. False is a FACT, not a failure: 此藥未納入健保給付. It applies to 42.9% of active licences, so report it as 'not covered by NHI', never as 查無此藥.",
+      "type": "boolean"
+    },
+    "source_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "NHI dataset URL (cite as evidence)."
+    },
+    "total": {
+      "default": 0,
+      "description": "Total matching items before `limit` was applied.",
+      "type": "integer"
+    },
+    "truncated": {
+      "default": false,
+      "description": "True iff `items` was capped by `limit`.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "license_no"
+  ],
+  "type": "object"
+}
