@@ -13,12 +13,13 @@ agent, always with a source link.
 
 ![How it works: you ask your AI agent in plain language, taiwan-fda-mcp queries the official TFDA APIs, and you get an answer with citations.](https://raw.githubusercontent.com/shin13/opentaimed/main/taiwan-fda-mcp/docs/architecture.svg)
 
-> **Not an official TFDA product.** An independent open-source tool over the
-> *public* TFDA APIs (`mcp.fda.gov.tw`, `data.fda.gov.tw`). Every answer links
-> back to the official page — verify there before any clinical decision. Not a
-> medical device.
+> **Not an official TFDA or NHI product.** An independent open-source tool over
+> *public* government APIs — TFDA (`mcp.fda.gov.tw`, `data.fda.gov.tw`) for 仿單
+> and NHI / 健保署 (`info.nhi.gov.tw`, 政府資料開放授權條款第 1 版) for 健保給付.
+> Every answer links back to the official page — verify there before any clinical
+> decision. Not a medical device.
 
-## Five tools
+## Seven tools
 
 | Tool | What it does |
 |---|---|
@@ -27,6 +28,8 @@ agent, always with a source link.
 | `get_package_insert` | Read one license's official 仿單, with a source link |
 | `get_drug_appearance` | Pill shape/color/dimensions/score/imprint + official image URL |
 | `check_insert_updates` | List inserts updated since a given date |
+| `get_nhi_drug_item` | NHI reimbursement status, 支付價, and 給付規定 chapter for one 健保代碼 |
+| `list_nhi_drug_items` | Every NHI item under one license — is it 健保-covered, and at what price |
 
 You don't call these by hand — you ask your assistant in plain Chinese and it
 searches → picks the license → quotes the insert → cites the TFDA source URL.
@@ -81,7 +84,7 @@ docker compose up -d --build
   internal network, **not** reachable except through the proxy.
 - Single worker / single instance only (shared in-memory state is per-process;
   Redis required before scaling — ADR-0010).
-- Egress firewall must allow `mcp.fda.gov.tw` and `data.fda.gov.tw`.
+- Egress firewall must allow `mcp.fda.gov.tw`, `data.fda.gov.tw`, and `info.nhi.gov.tw`.
 - Client URL: `https://<your-host>/mcp/` (trailing slash).
 
 ## Development
@@ -99,11 +102,12 @@ License: MIT (with clinical disclaimer) ·
 
 ## 繁體中文完整教學
 
-從你的 AI 助理直接查詢**台灣食藥署（TFDA）**的官方藥物資訊——仿單、許可證、藥品外觀，每個回答都附上官方出處。這份教學假設你**完全不懂程式**，一步一步帶你裝好、用起來。
+從你的 AI 助理直接查詢**台灣食藥署（TFDA）**的官方藥物資訊——仿單、許可證、藥品外觀，以及**中央健康保險署（健保署）**的健保給付／支付價／給付規定，每個回答都附上官方出處。這份教學假設你**完全不懂程式**，一步一步帶你裝好、用起來。
 
-> **這不是食藥署官方產品。** 這是一個獨立的開源工具，只讀取 TFDA 的*公開* API
-> （`mcp.fda.gov.tw`、`data.fda.gov.tw`）。每個回答都會附上 TFDA 官方頁面連結，
-> **臨床決策前請務必到官方頁面再次確認**。本工具不是醫療器材。
+> **這不是食藥署，也不是健保署的官方產品。** 這是一個獨立的開源工具，只讀取
+> 政府*公開* API——TFDA（`mcp.fda.gov.tw`、`data.fda.gov.tw`）查仿單，健保署
+> （`info.nhi.gov.tw`，政府資料開放授權條款第 1 版）查健保給付。每個回答都會附上
+> 官方頁面連結，**臨床決策前請務必到官方頁面再次確認**。本工具不是醫療器材。
 
 ### 這是什麼？能幫我做什麼？
 
@@ -129,7 +133,7 @@ License: MIT (with clinical disclaimer) ·
 
 ### 第二步：把工具接到你的 AI 助理
 
-依你用的軟體選一種，設定完**記得重新啟動該軟體**，五個工具就會自動出現。
+依你用的軟體選一種，設定完**記得重新啟動該軟體**，七個工具就會自動出現。
 
 #### 如果你用 Claude Desktop（最常見）
 
@@ -206,7 +210,7 @@ args = ["taiwan-fda-mcp"]
 - **助理說找不到工具 / 沒反應**：確認設定檔存檔後**有完全重新啟動**該軟體。
 - **第一次很慢**：`uvx` 首次會下載工具，之後就快了。
 - **查某個藥是空的**：可能該藥非現行有效許可證（本工具只查有效藥證），或該欄位官方未載明。
-- **公司／醫院網路**：需允許連到 `mcp.fda.gov.tw` 與 `data.fda.gov.tw`。
+- **公司／醫院網路**：需允許連到 `mcp.fda.gov.tw`、`data.fda.gov.tw` 與 `info.nhi.gov.tw`。
 
 ### 授權與免責
 

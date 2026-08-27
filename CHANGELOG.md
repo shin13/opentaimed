@@ -8,6 +8,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Two NHI tools, `get_nhi_drug_item` and `list_nhi_drug_items`, backed by
+  健保署 open data A21030000I-E41001-001 (健保用藥品項查詢項目檔). They answer
+  reimbursement status, 支付價, and 給付規定 chapter references, and carry the
+  official 健保代碼 ↔ 許可證字號 mapping so a chart code resolves to a 仿單.
+  Delisted items (支付價 0.00) are included deliberately: 「此藥已停止給付」and
+  「查無此藥」are different clinical answers. 給付規定 full text is not served —
+  the chapter code and the official PDF URL are, and the separate
+  `nhi-knowledge-extractor` project holds the text, joined on the same official
+  chapter numbering. See ADR-0014.
 - CI: `publish.yml` now creates the GitHub Release itself on a version tag, with
   the body extracted from this file's section for that version. Creating the
   Release had never once happened as part of a release — all eight existing ones

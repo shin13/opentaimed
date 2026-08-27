@@ -65,6 +65,7 @@ siblings of `taiwan-fda-mcp/` under the same monorepo when they begin.
 | Add a new TFDA tool | `taiwan-fda-mcp/src/taiwan_fda_mcp/tool_responses.py` (add Pydantic shape first), then `tools.py`, then `mcp_server.py` adapter. Run `UPDATE_SNAPSHOTS=1 uv run pytest tests/unit/test_mcp_schemas.py`. | [ADR-0001](./docs/adr/0001-tfda-dual-api-strategy.md) |
 | Change the server's `instructions=` string | `taiwan-fda-mcp/src/taiwan_fda_mcp/mcp_server.py` (MANDATORY-RULES block at top). Re-test in Claude Desktop. | [ADR-0002](./docs/adr/0002-mandatory-rules-server-instructions.md) |
 | Add a new TFDA license-number prefix | `taiwan-fda-mcp/src/taiwan_fda_mcp/sources/license_code.py` (`LICENSE_PREFIX_MAP`). Verify the 8-digit code returned by GetDrugDoc with a real `curl`. | [ADR-0001](./docs/adr/0001-tfda-dual-api-strategy.md) |
+| Add an NHI field | `taiwan-fda-mcp/src/taiwan_fda_mcp/models.py` (`NhiDrugItem`) **and** `tool_responses.py` (`NhiDrugItemRow` — mirror the field names exactly; `_nhi_row` forwards via `model_dump()`), then map it in `sources/nhi/dataset.py` (`parse_rows`'s inline `NhiDrugItem(...)`; add to `EXPECTED_COLUMNS` if it is a new upstream column). No `tools.py` change needed. | [ADR-0014](./docs/adr/0014-nhi-drug-items.md) |
 | Investigate a 5xx from upstream | `taiwan-fda-mcp/src/taiwan_fda_mcp/sources/insert/client.py` already retries 5xx + transport errors. Inspect `_logger.warning("insert.fetch.retry", ...)` output. | — |
 | Add a data source beyond TFDA | Follow the **Source Expansion Pattern** below. Open an ADR first. | This file, "Source Expansion Pattern" |
 | Add an architectural decision | Copy `docs/adr/_template.md` → `docs/adr/NNNN-slug.md`, update the index in `docs/adr/README.md`. | [docs/adr/README.md](./docs/adr/README.md) |
@@ -148,6 +149,39 @@ Representative rows:
 
 Unknown prefixes raise `LicensePrefixUnsupportedError`. Verify any new
 prefix with a real `curl` to GetDrugDoc before adding.
+
+### 3. 健保用藥品項 — `info.nhi.gov.tw` open data (a SECOND agency)
+
+Backs `get_nhi_drug_item` / `list_nhi_drug_items` (see
+[ADR-0014](./docs/adr/0014-nhi-drug-items.md)). This is 衛生福利部中央健康保險署
+（健保署，NHI）— a different agency from TFDA（食藥署）。給付／支付價／給付規定
+問題屬健保署，仿單問題屬食藥署；每則回應必須說明資料來自哪一個機關。
+
+```
+# Metadata probe — 2 KB, ~0.6 s. Uses the DATASET identifier (no -001 suffix):
+GET https://info.nhi.gov.tw/api/iode0010/v1/rest/dataset/A21030000I-E41001
+# Payload — 92 MB, >120 s, UTF-8 with BOM. Uses the RESOURCE ID (-001 suffix):
+GET https://info.nhi.gov.tw/api/iode0000s01/Dataset?rId=A21030000I-E41001-001
+```
+
+- Dataset identifier `A21030000I-E41001` vs resource ID
+  `A21030000I-E41001-001` — the metadata route accepts **only** the former
+  (the resource ID returns HTTP 200 with body `Not found`).
+- Updates 每月（`accrualPeriodicity: 每月`）。授權：政府資料開放授權條款第 1 版（免費）。
+
+**Traps (each observed directly — do not re-discover; spec §2.1):**
+
+- **This API returns HTTP 200 for at least three failure modes.** Never treat
+  a 200 as success — validate the body.
+- `filters` / `fields` query params are documented but **silently ignored**;
+  `result.total` always returns `0`. `offset` works; `limit` caps at 1000.
+- `HEAD` on the payload → **405**; no `ETag`, `Last-Modified`, `Cache-Control`,
+  or `Accept-Ranges` — only `Content-Length`. So there is no cheap upstream
+  version signal; **the payload sha256 is the version identity**.
+- `modified` and `distribution[0].resourceModified` disagree by 13 days in the
+  same response — neither is trusted. `numberOfData` (224,553 = full price
+  history, not current rows) is **logged, never gated** — it grows legitimately
+  and the probe→download window is >120 s wide.
 
 ## Security Invariants
 
@@ -364,8 +398,17 @@ arrives. The current MCP server runs over stdio and needs none of them.
 
 - **PHI / patient context** — v1 targets pharmacy-center reference
   lookup only. No queries are conditioned on patient identity.
-- **健保給付規定** — NHI reimbursement rules are a future RAG
-  integration; v1 does not surface them.
+- **健保給付規定 full text** — the `get_nhi_drug_item` /
+  `list_nhi_drug_items` tools **do** surface the official 給付規定 chapter
+  code (`payment_rule_sections`) and the official PDF URL
+  (`payment_rule_urls`), but not the regulation text. The full text lives in
+  the separate `nhi-knowledge-extractor` project, joined on the same official
+  chapter numbering; see [ADR-0014](./docs/adr/0014-nhi-drug-items.md).
+- **健保停止給付 items are IN scope** — delisted NHI items (支付價 0.00) are
+  ingested and returned with `reimbursement_status="delisted"`, because
+  「此藥已停止給付」and「查無此藥」are different clinical answers. This is a
+  different axis from Dataset 37's de-registered *licences* below, which
+  remain out of scope. See [ADR-0014](./docs/adr/0014-nhi-drug-items.md).
 - **De-registered drugs** — `search_drugs` is backed by Dataset 37
   (active licenses only). Discontinued drugs are intentionally not
   searchable in v1; see
@@ -407,6 +450,14 @@ Test invariants:
   default is `0.5` — leaving it armed silently inflates the suite from
   ~1 second to ~14 (tests stay green, just slow). The `seeded_settings`
   fixture already does this; mirror it in any new fixture.
+- **Store refresh policies are verified by mutation, not by a green suite.**
+  The repo now has two cached stores whose refresh logic a passing suite does
+  not fully pin — Dataset 42 (PR #89) and NHI (ADR-0014). Break the policy,
+  confirm the named test goes red, revert. Run each mutation in a **subprocess
+  with a timeout** and restore from the original file text: the inline-`await`
+  mutation deadlocks rather than failing (it re-enters a lock the caller
+  holds), and a run without a timeout will hang *and* leave mutated source on
+  disk. Treat a hang as a kill.
 
 ## Where to find more
 
