@@ -26,7 +26,12 @@ from taiwan_fda_mcp.sources.opendata.dataset37 import (
 )
 from taiwan_fda_mcp.sources.opendata.dataset42 import parse_rows as parse_rows_42
 from taiwan_fda_mcp.sources.opendata.dataset42 import write_to_cache as write_to_cache_42
-from taiwan_fda_mcp.tool_responses import GetDrugAppearanceResponse, GetPackageInsertResponse
+from taiwan_fda_mcp.tool_responses import (
+    GetDrugAppearanceResponse,
+    GetNhiDrugItemResponse,
+    GetPackageInsertResponse,
+    ListNhiDrugItemsResponse,
+)
 from taiwan_fda_mcp.tools import (
     check_insert_updates,
     get_drug_appearance,
@@ -1360,3 +1365,19 @@ async def test_get_drug_appearance_rejects_offhost_image_url(tmp_path):
     resp = await get_drug_appearance("L1", settings=_appearance_settings(tmp_path))
     assert resp.appearance_on_file is True
     assert resp.image_url is None  # off-host URL dropped
+
+
+def test_get_nhi_drug_item_response_defaults_are_safe():
+    r = GetNhiDrugItemResponse(nhi_code="X")
+    assert r.item_on_file is False
+    assert r.item is None
+    assert r.is_stale is False
+
+
+def test_list_nhi_drug_items_response_defaults_are_safe():
+    r = ListNhiDrugItemsResponse(license_no="X")
+    assert r.nhi_listed is False
+    assert r.any_reimbursed is False
+    assert r.items == []
+    assert r.total == 0
+    assert r.truncated is False
