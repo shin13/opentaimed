@@ -25,7 +25,7 @@ instead of guessing.
 
 | Part | Status | What it is |
 |---|---|---|
-| [`taiwan-fda-mcp/`](./taiwan-fda-mcp) | **shipped — v0.8.0** | An MCP server with 7 tools. Works with any MCP client (Claude Desktop, Claude Code, Codex…). |
+| [`taiwan-fda-mcp/`](./taiwan-fda-mcp) | **shipped — v0.8.1** | An MCP server with 7 tools. Works with any MCP client (Claude Desktop, Claude Code, Codex…). |
 | Web backend | planned | API for non-MCP apps. |
 | Web frontend | planned | A query page for clinicians. |
 
@@ -86,7 +86,7 @@ OpenTaiMed 讓助理**去查真正的 TFDA 仿單並附上出處**，而不是�
 
 | 部分 | 狀態 | 是什麼 |
 |---|---|---|
-| [`taiwan-fda-mcp/`](./taiwan-fda-mcp) | **已上線 — v0.8.0** | 有 7 個工具的 MCP server，可搭配任何 MCP client（Claude Desktop、Claude Code、Codex…）。 |
+| [`taiwan-fda-mcp/`](./taiwan-fda-mcp) | **已上線 — v0.8.1** | 有 7 個工具的 MCP server，可搭配任何 MCP client（Claude Desktop、Claude Code、Codex…）。 |
 | 後端 Web API | 規劃中 | 給非 MCP 的應用使用。 |
 | 前端網頁 | 規劃中 | 給臨床人員的查詢介面。 |
 

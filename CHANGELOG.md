@@ -7,17 +7,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-08-30
+
 ### Changed
 - The shared HTTP service (`MCP_TRANSPORT=http`, ADR-0010 Model B) now pre-warms
-  all three data stores (NHI, Dataset 37, Dataset 42) at startup, before the ASGI
-  lifespan yields. Because the server accepts no traffic until startup returns,
-  this gates readiness on the warm for free — no clinician's first query pays the
-  ~120 s cold-start block on the 92 MB NHI download. Warming is best-effort: a
-  store failing to download only logs and never blocks startup (the store falls
-  back to its lazy cold-load on first use). Individual `uvx` (stdio) use is
-  unchanged — it stays lazy, since the single user knowingly triggers their own
-  one-time cold-load. `docker-compose.yml`'s healthcheck `start_period` is raised
-  20 s → 180 s to cover the first-deploy warm against an empty cache volume.
+  all three data stores (NHI, Dataset 37, Dataset 42) at startup, before the
+  ASGI lifespan yields. Since the server accepts no traffic until startup
+  returns, the ~120 s first-run NHI download now sits behind readiness — no
+  clinician's first query pays the cold-start block, and it removes the
+  once-per-volume first-deploy block that 0.8.0's `fda-cache` volume still left.
+  Warming is best-effort: a store failing to download only logs and never blocks
+  startup, falling back to its lazy cold-load on first use. Individual `uvx`
+  (stdio) use is unchanged — it stays lazy, since the single user knowingly
+  triggers their own one-time cold-load. `docker-compose.yml`'s healthcheck
+  `start_period` is raised 20 s → 180 s to cover the first-deploy warm against
+  an empty cache volume.
 
 ## [0.8.0] — 2026-08-27
 
@@ -385,7 +389,8 @@ shipped at the cut.
 - macOS 14+, Claude Desktop (stdio transport)
 - TFDA endpoints `mcp.fda.gov.tw` and `data.fda.gov.tw` as of 2026-05.
 
-[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/shin13/opentaimed/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/shin13/opentaimed/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/shin13/opentaimed/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/shin13/opentaimed/compare/v0.6.0...v0.7.0
