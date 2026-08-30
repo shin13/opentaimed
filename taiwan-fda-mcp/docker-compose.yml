@@ -30,7 +30,12 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      # HTTP startup pre-warms the stores BEFORE the ASGI lifespan yields, so /health
+      # is unreachable until the warm finishes. On a cold cache volume that first-run
+      # NHI download is ~120 s (client ceiling 600 s). start_period must exceed the
+      # typical warm or an orchestrator marks the container unhealthy mid-warm; raise
+      # it toward 600 s on a slow / proxied hospital link. Warm cache → warm is cheap.
+      start_period: 180s
 
   proxy:
     image: caddy:2

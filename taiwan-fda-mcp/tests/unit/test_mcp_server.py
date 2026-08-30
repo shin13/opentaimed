@@ -2,6 +2,7 @@
 # brief: Verify FastMCP server exposes the seven tools and routes calls.
 
 import json
+import types
 from pathlib import Path
 
 import httpx
@@ -218,3 +219,97 @@ async def test_get_drug_appearance_tool_registered(tmp_path, monkeypatch):
     resp = await get_drug_appearance("L1")
     assert resp.appearance_on_file is True
     assert resp.shape == "圓形"
+
+
+# --- Transport-aware startup pre-warm (ADR-0010 Model B) ---------------------
+
+
+def _patch_warmers(monkeypatch, *, nhi_exc=None, appearance_exc=None, ds37_exc=None):
+    """Replace the three store cold-load entry points with recording fakes.
+
+    Returns a dict flipped True as each warm entry point is invoked, so a test
+    can assert exactly which stores were warmed.
+    """
+    calls = {"nhi": False, "appearance": False, "dataset37": False}
+
+    async def fake_nhi_get_indexes(settings):
+        calls["nhi"] = True
+        if nhi_exc:
+            raise nhi_exc
+        return ({}, {})
+
+    async def fake_appearance_get_index(settings):
+        calls["appearance"] = True
+        if appearance_exc:
+            raise appearance_exc
+        return {}
+
+    async def fake_ds37(settings):
+        calls["dataset37"] = True
+        if ds37_exc:
+            raise ds37_exc
+        return []
+
+    monkeypatch.setattr(
+        srv, "get_nhi_store", lambda: types.SimpleNamespace(get_indexes=fake_nhi_get_indexes)
+    )
+    monkeypatch.setattr(
+        srv,
+        "get_appearance_store",
+        lambda: types.SimpleNamespace(get_index=fake_appearance_get_index),
+    )
+    monkeypatch.setattr(srv, "_load_or_refresh_licenses", fake_ds37)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_prewarm_http_warms_all_three_stores(monkeypatch):
+    """HTTP transport (Model B) warms NHI + Dataset 42 appearance + Dataset 37."""
+    calls = _patch_warmers(monkeypatch)
+    await srv._prewarm_stores(Settings(MCP_TRANSPORT="http"))  # type: ignore[call-arg]
+    assert calls == {"nhi": True, "appearance": True, "dataset37": True}
+
+
+@pytest.mark.asyncio
+async def test_prewarm_stdio_warms_nothing(monkeypatch):
+    """stdio (individual uvx) stays lazy — pre-warm must touch no store."""
+    calls = _patch_warmers(monkeypatch)
+    await srv._prewarm_stores(Settings(MCP_TRANSPORT="stdio"))  # type: ignore[call-arg]
+    assert calls == {"nhi": False, "appearance": False, "dataset37": False}
+
+
+@pytest.mark.asyncio
+async def test_prewarm_best_effort_swallows_store_failure(monkeypatch):
+    """A store download failing during warm must NOT raise — startup is never blocked.
+
+    Pre-warm is an optimization; a transient NHI/TFDA outage at deploy time must not
+    stop the whole service. The other stores still warm; the failed one falls back to
+    the lazy path on its first real query.
+    """
+    calls = _patch_warmers(monkeypatch, nhi_exc=RuntimeError("NHI upstream down"))
+    await srv._prewarm_stores(Settings(MCP_TRANSPORT="http"))  # type: ignore[call-arg]
+    assert calls["appearance"] is True
+    assert calls["dataset37"] is True
+
+
+@pytest.mark.asyncio
+async def test_lifespan_invokes_prewarm(monkeypatch):
+    """The lifespan startup half MUST call _prewarm_stores (composition-root wiring guard)."""
+    seen: dict = {}
+
+    async def fake_prewarm(settings):
+        seen["settings"] = settings
+
+    async def _noop(*a, **k):
+        return None
+
+    monkeypatch.setattr(srv, "_prewarm_stores", fake_prewarm)
+    monkeypatch.setattr(srv, "get_settings", lambda: Settings(MCP_TRANSPORT="http"))  # type: ignore[call-arg]
+    monkeypatch.setattr(srv, "_shutdown_refresh", _noop)
+    monkeypatch.setattr(srv, "get_appearance_store", lambda: types.SimpleNamespace(shutdown=_noop))
+    monkeypatch.setattr(srv, "get_nhi_store", lambda: types.SimpleNamespace(shutdown=_noop))
+
+    async with srv._lifespan(srv.mcp):
+        pass
+
+    assert seen["settings"].MCP_TRANSPORT == "http"

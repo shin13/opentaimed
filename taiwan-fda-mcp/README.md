@@ -86,8 +86,15 @@ docker compose up -d --build
   Redis required before scaling — ADR-0010).
 - Egress firewall must allow `mcp.fda.gov.tw`, `data.fda.gov.tw`, and `info.nhi.gov.tw`.
 - Store caches persist on the named `fda-cache` volume (mounted at `/cache`). Keep
-  it: without it, every redeploy cold-blocks the first NHI query on a fresh 92 MB
-  / >120 s download. The first deploy against an empty volume still pays that once.
+  it: without it, every redeploy re-downloads the fresh 92 MB / >120 s NHI dataset
+  (Dataset 37/42 too).
+- On HTTP startup the container **pre-warms** all three stores before it reports
+  healthy, so no clinician's query pays a cold-start block. A first deploy against
+  an empty volume therefore takes ~120 s to become healthy (the NHI download);
+  redeploys against a warm volume are quick. stdio (individual `uvx`) stays lazy —
+  no pre-warm. The healthcheck `start_period` (180 s) covers this; raise it toward
+  600 s on a slow / proxied hospital link so the container is not flagged unhealthy
+  mid-warm.
 - Client URL: `https://<your-host>/mcp/` (trailing slash).
 
 ## Development

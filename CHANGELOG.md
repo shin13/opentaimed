@@ -7,6 +7,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+- The shared HTTP service (`MCP_TRANSPORT=http`, ADR-0010 Model B) now pre-warms
+  all three data stores (NHI, Dataset 37, Dataset 42) at startup, before the ASGI
+  lifespan yields. Because the server accepts no traffic until startup returns,
+  this gates readiness on the warm for free — no clinician's first query pays the
+  ~120 s cold-start block on the 92 MB NHI download. Warming is best-effort: a
+  store failing to download only logs and never blocks startup (the store falls
+  back to its lazy cold-load on first use). Individual `uvx` (stdio) use is
+  unchanged — it stays lazy, since the single user knowingly triggers their own
+  one-time cold-load. `docker-compose.yml`'s healthcheck `start_period` is raised
+  20 s → 180 s to cover the first-deploy warm against an empty cache volume.
+
 ## [0.8.0] — 2026-08-27
 
 ### Added

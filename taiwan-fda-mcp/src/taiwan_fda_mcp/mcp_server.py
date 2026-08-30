@@ -1,6 +1,8 @@
 # path: src/taiwan_fda_mcp/mcp_server.py
 # brief: FastMCP stdio server exposing taiwan_fda_mcp.tools as MCP tools.
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
@@ -10,7 +12,7 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
 from taiwan_fda_mcp.coerce import coerce_json_array
-from taiwan_fda_mcp.config import get_settings
+from taiwan_fda_mcp.config import Settings, get_settings
 from taiwan_fda_mcp.logging_config import configure_logging
 from taiwan_fda_mcp.resources import OTC_INSERT_STRUCTURE_MD, RX_INSERT_STRUCTURE_MD
 from taiwan_fda_mcp.sources.nhi.store import get_nhi_store
@@ -24,6 +26,7 @@ from taiwan_fda_mcp.tool_responses import (
     SearchByIngredientResponse,
     SearchDrugsResponse,
 )
+from taiwan_fda_mcp.tools import _load_or_refresh_licenses
 from taiwan_fda_mcp.tools import (
     check_insert_updates as _check_insert_updates,
 )
@@ -47,6 +50,8 @@ from taiwan_fda_mcp.tools import (
 )
 from taiwan_fda_mcp.tools import shutdown as _shutdown_refresh
 
+_logger = logging.getLogger(__name__)
+
 FieldGroupLiteral = Literal["all", "key_fields"]
 # Some MCP clients (observed: Claude Desktop) serialise list-typed tool arguments
 # as a JSON string, e.g. '["indication"]'. Coerce such input back to a list before
@@ -55,9 +60,43 @@ JsonStringList = Annotated[list[str], BeforeValidator(coerce_json_array)]
 ResponseFormatLiteral = Literal["concise", "key", "detailed", "full"]
 
 
+async def _prewarm_stores(settings: Settings) -> None:
+    """Best-effort warm the process-wide data stores at HTTP startup (ADR-0010 Model B).
+
+    stdio (individual `uvx`) stays lazy: the single user knowingly triggers the one
+    cold-load on their first query. The shared HTTP service concentrates every
+    clinician onto one process, where a cold first query would block an unrelated
+    caller ~120 s on the 92 MB NHI download. Warming here — before the ASGI lifespan
+    yields — gates readiness on it for free: the server accepts no traffic until
+    startup returns, so no clinician ever pays the cold-start.
+
+    Best-effort by design: a store download failing (transient NHI/TFDA outage at
+    deploy time) only logs; it never raises and never blocks startup. The failed
+    store falls back to its normal lazy cold-load on the first real query.
+    """
+    if settings.MCP_TRANSPORT != "http":
+        return
+    warmers = {
+        "dataset37": _load_or_refresh_licenses(settings),
+        "appearance": get_appearance_store().get_index(settings),
+        "nhi": get_nhi_store().get_indexes(settings),
+    }
+    _logger.info("prewarm.start", extra={"stores": list(warmers)})
+    results = await asyncio.gather(*warmers.values(), return_exceptions=True)
+    for name, result in zip(warmers, results, strict=True):
+        if isinstance(result, Exception):
+            _logger.warning(
+                "prewarm.store.failed",
+                extra={"store": name, "error": type(result).__name__},
+            )
+        else:
+            _logger.info("prewarm.store.ok", extra={"store": name})
+
+
 @asynccontextmanager
 async def _lifespan(_server: FastMCP):
-    """Cancel background refresh tasks on graceful shutdown (ADR-0010 / 0013 / 0014)."""
+    """Warm the stores on HTTP startup (ADR-0010); cancel refresh tasks on shutdown."""
+    await _prewarm_stores(get_settings())
     yield
     await _shutdown_refresh()
     await get_appearance_store().shutdown()
