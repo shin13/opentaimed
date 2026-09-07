@@ -11,8 +11,14 @@ class RCode(IntEnum):
     INVALID_LICENSE = 1001
     LICENSE_PREFIX_UNSUPPORTED = 1002
     SEARCH_NO_CRITERIA = 1003
-    DATASET_FETCH_FAILED = 2001
-    DATASET_PARSE_FAILED = 2002
+    # The four dataset failure modes are kept distinct because each implies a
+    # DIFFERENT fix: unreachable → upstream availability, confirm by hand;
+    # HTTP status → the endpoint moved, fix the URL/ID; empty → the ID returned
+    # no dataset, investigate; parse → upstream changed schema, fix the parser.
+    DATASET_FETCH_FAILED = 2001  # no HTTP response at all (transport), retries exhausted
+    DATASET_PARSE_FAILED = 2002  # response parsed, but an expected field is gone/changed
+    DATASET_HTTP_STATUS = 2003  # a response arrived carrying a non-2xx status (e.g. 404)
+    DATASET_EMPTY = 2004  # 2xx arrived, but it carries no dataset (this host answers 200)
     INSERT_FETCH_FAILED = 3001
     INSERT_PARSE_FAILED = 3002
     INSERT_NOT_FOUND = 3003
