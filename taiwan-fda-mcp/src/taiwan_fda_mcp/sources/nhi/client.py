@@ -31,52 +31,133 @@ async def probe_metadata(
     base_url: str,
     timeout: float = 5.0,  # noqa: ASYNC109
     rate_limit_interval: float = 0.0,
+    max_retries: int = 1,
+    retry_backoff: float = 0.5,
 ) -> NhiMetadata:
     """Fetch the 2 KB dataset metadata — the cheap freshness signal.
 
     Measured at 2,020 bytes and 0.51-0.88 s, so this MAY block a query, unlike
     the payload download.
 
+    Failures are split four ways because each implies a different fix, and the
+    RCode is what tells a human at 02:00 which one to reach for:
+
+    | RCode                  | Meaning                          | Fix |
+    |------------------------|----------------------------------|-----|
+    | `DATASET_FETCH_FAILED` | no response at all, retries gone | upstream availability — confirm by hand |
+    | `DATASET_HTTP_STATUS`  | a response, non-2xx (e.g. 404)   | the endpoint moved — re-verify URL / dataset ID |
+    | `DATASET_EMPTY`        | 2xx, but carrying no dataset     | investigate: the ID may be retired |
+    | `DATASET_PARSE_FAILED` | a dataset, but a field changed   | upstream schema drift — fix the parsing below |
+
+    Only the first is retried: `httpx.RequestError` means no valid HTTP response
+    was received, which is the transient class. Note that it is deliberately
+    broader than `httpx.TimeoutException` — the two live failures (2026-09-02,
+    2026-09-06) were `httpx.ReadError`, a connection dropped mid-read, which is
+    NOT a timeout; retrying timeouts alone would have missed both.
+
+    **Keep `max_retries` low here.** `NhiItemStore._probe_and_maybe_schedule`
+    awaits this while holding the store lock, and a failed probe leaves the memo
+    stale, so every subsequent query re-probes. Worst-case blocking per query
+    while the host is unreachable is `timeout * (max_retries + 1)` plus backoff
+    — 10.5 s at the 5 s default and one retry, and it queues. The live smoke
+    test overrides this (3 attempts, wider backoff): CI can afford the wait and
+    no query is behind it.
+
     Args:
         base_url: e.g. 'https://info.nhi.gov.tw'.
         timeout: per-request timeout in seconds.
-        rate_limit_interval: seconds to sleep after the request. 0 for tests.
+        rate_limit_interval: seconds to sleep after the (final) request. 0 for tests.
+        max_retries: retry attempts on transport failure (default 1, i.e. up to
+            2 HTTP calls). See the blocking note above before raising it.
+        retry_backoff: base sleep seconds between retries; doubles each attempt.
 
     Returns:
         NhiMetadata with both upstream timestamps and the declared row count.
 
     Raises:
-        DatasetFetchError: transport failure, or a 200 whose body is not the
-            expected JSON object (this host returns 200 for several failures).
+        DatasetFetchError: always, carrying one of the four RCodes above.
     """
     url = f"{base_url.rstrip('/')}{NHI_METADATA_PATH}"
     _logger.info("nhi.probe.start", extra={"url": url})
+    attempt = 0
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            body = response.text
-    except httpx.HTTPError as exc:
-        raise DatasetFetchError(
-            RCode.DATASET_FETCH_FAILED, f"NHI metadata probe failed: {exc}"
-        ) from exc
+            while True:
+                try:
+                    response = await client.get(url)
+                    response.raise_for_status()
+                except httpx.RequestError as exc:
+                    if attempt >= max_retries:
+                        raise DatasetFetchError(
+                            RCode.DATASET_FETCH_FAILED,
+                            f"NHI metadata probe unreachable after {attempt + 1} attempts "
+                            f"({type(exc).__name__}: {exc}) — upstream availability, "
+                            "not schema drift; confirm the host by hand",
+                            detail={"url": url, "attempts": attempt + 1},
+                        ) from exc
+                    sleep_for = retry_backoff * (2**attempt)
+                    _logger.warning(
+                        "nhi.probe.retry",
+                        extra={
+                            "attempt": attempt + 1,
+                            "error": str(exc),
+                            "sleep_for": sleep_for,
+                        },
+                    )
+                    await asyncio.sleep(sleep_for)
+                    attempt += 1
+                except httpx.HTTPStatusError as exc:
+                    raise DatasetFetchError(
+                        RCode.DATASET_HTTP_STATUS,
+                        f"NHI metadata probe answered HTTP {exc.response.status_code} — "
+                        "the endpoint moved or the dataset ID is wrong; re-verify "
+                        f"NHI_DATASET_ID ({NHI_DATASET_ID}) against info.nhi.gov.tw",
+                        detail={"url": url, "status_code": exc.response.status_code},
+                    ) from exc
+                else:
+                    body = response.text
+                    break
     finally:
         if rate_limit_interval > 0:
             await asyncio.sleep(rate_limit_interval)
 
+    # Reached the host and got a 2xx, so the remaining two failure modes are
+    # about CONTENT, and they are split: "no dataset came back" is something to
+    # investigate upstream, whereas "a dataset came back but a field moved" is
+    # a change this parser has to follow.
     try:
         payload = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise DatasetFetchError(
+            RCode.DATASET_EMPTY,
+            "NHI metadata answered 2xx with a non-JSON body — this host serves "
+            "HTTP 200 + 'Not found' for a retired or mistyped dataset ID; "
+            f"investigate whether {NHI_DATASET_ID} still exists",
+            detail={"url": url, "body_prefix": body[:80]},
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise DatasetFetchError(
+            RCode.DATASET_EMPTY,
+            "NHI metadata answered 2xx with JSON that is not an object — no "
+            f"dataset was returned; investigate whether {NHI_DATASET_ID} still exists",
+            detail={"url": url, "body_prefix": body[:80]},
+        )
+
+    try:
         distribution = payload["distribution"][0]
         meta = NhiMetadata(
             modified=str(payload["modified"]),
             resource_modified=str(distribution["resourceModified"]),
             number_of_data=int(payload["numberOfData"]),
         )
-    except (json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError) as exc:
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
         raise DatasetFetchError(
             RCode.DATASET_PARSE_FAILED,
-            "NHI metadata response is not the expected JSON object",
-            detail={"body_prefix": body[:80]},
+            "NHI metadata is missing an expected field — upstream changed its "
+            "schema; the parsing in sources/nhi/client.py needs to follow it "
+            f"({type(exc).__name__}: {exc})",
+            detail={"url": url, "body_prefix": body[:80]},
         ) from exc
 
     _logger.info(
