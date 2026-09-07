@@ -7,6 +7,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+- The NHI metadata probe now retries once when the connection drops, and
+  classifies its failures four ways instead of two. `info.nhi.gov.tw` closes
+  connections mid-read often enough for the daily smoke test to catch it twice
+  in five days, and each such failure costs a needless 92 MB re-download,
+  because the store reads a failed probe as "upstream may have moved". The four
+  cases now each name the fix they imply — `DATASET_FETCH_FAILED` (unreachable
+  after retries: upstream availability), `DATASET_HTTP_STATUS` (a non-2xx
+  response: the endpoint moved), `DATASET_EMPTY` (a 2xx carrying no dataset:
+  the ID may be retired) and `DATASET_PARSE_FAILED` (a field moved: schema
+  drift) — and only the first is retried. The retry count stays at one on the
+  query path, where the probe runs under the store lock and every queued query
+  waits behind it; the daily smoke test opts into three attempts instead, since
+  nothing queues behind CI.
+
 ## [0.8.1] — 2026-08-30
 
 ### Changed

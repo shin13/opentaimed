@@ -121,10 +121,35 @@ async def test_every_insert_carries_attribution(license_no: str):
 async def test_smoke_nhi_probe_is_reachable():
     """The NHI metadata probe is the cheap half of the two-tier refresh.
 
+    EVERY failure here is red on purpose, a transient outage included — this
+    alert is meant to be seen and confirmed by hand, not silently skipped. What
+    the failure tells you is WHICH fix it needs, via the `DatasetFetchError`
+    RCode (see `sources/nhi/client.probe_metadata`):
+
+    - `DATASET_FETCH_FAILED` — unreachable after 3 attempts. Upstream
+      availability; confirm the host, then close if it was a blip.
+    - `DATASET_HTTP_STATUS`  — a response with a non-2xx status. The endpoint
+      moved: re-verify the URL and dataset ID.
+    - `DATASET_EMPTY`        — 2xx carrying no dataset. Investigate whether the
+      dataset ID was retired.
+    - `DATASET_PARSE_FAILED` — a dataset, but a field moved. Upstream schema
+      drift: the parsing logic has to follow it.
+    - plain `AssertionError`  — reachable and parsed, but the row count is
+      implausible. Investigate before trusting NHI answers.
+
     Import stays function-local to match this file's convention (see the
     module-level NOTE) and keep collection free of schema-cache side effects.
     """
     from taiwan_fda_mcp.sources.nhi.client import probe_metadata
 
-    meta = await probe_metadata("https://info.nhi.gov.tw", timeout=20.0)
-    assert meta.number_of_data > 100_000  # noqa: PLR2004
+    # Deliberately more patient than production, which caps at one retry
+    # because it probes under the store lock. Nothing queues behind CI, so
+    # spend the wall-clock here instead: 3 attempts, 2 s and 4 s apart. Worst
+    # case ~66 s, well inside the job's 12-minute cap.
+    meta = await probe_metadata(
+        "https://info.nhi.gov.tw", timeout=20.0, max_retries=2, retry_backoff=2.0
+    )
+    assert meta.number_of_data > 100_000, (  # noqa: PLR2004
+        f"NHI declared only {meta.number_of_data} rows — reachable and parsed, but the "
+        "declared row count is implausible for this dataset"
+    )
