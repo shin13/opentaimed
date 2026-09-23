@@ -135,7 +135,7 @@ Nothing reaches PyPI until you Approve.
   the same install command on TestPyPI that the README gives users.
 - **Do not put lockfile dependency bumps in the changelog.** `uv.lock` is not
   shipped: `pyproject.toml` declares bounds (`fastmcp>=4.0.5,<5`,
-  `httpx>=0.28.1`, …), so anyone installing from PyPI resolves their own
+  `httpx>=0.28.1,<0.29`, …), so anyone installing from PyPI resolves their own
   dependency set at install time. A bump merged here reaches CI, local dev and
   the Docker image (`uv sync --frozen`), not PyPI users — and the reverse holds
   too: an unbounded dependency's new major reaches PyPI users before CI ever

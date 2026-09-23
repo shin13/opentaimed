@@ -27,6 +27,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   install, and the next major can no longer reach them untested. Verified over
   both stdio and HTTP: all seven tools, the server instructions and `/health`
   behave as before.
+- `httpx` is now constrained to `>=0.28.1,<0.29`. Its 1.0 pre-releases are a
+  rewrite that drops `AsyncClient` and the whole exception hierarchy the
+  upstream clients and their retry logic depend on (`RequestError`,
+  `ReadError`, `TimeoutException`, `HTTPStatusError`). Without the bound, 1.0
+  final would reach PyPI installs as soon as it shipped.
 
 ## [0.8.1] — 2026-08-30
 
