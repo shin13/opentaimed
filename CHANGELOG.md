@@ -21,6 +21,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   query path, where the probe runs under the store lock and every queued query
   waits behind it; the daily smoke test opts into three attempts instead, since
   nothing queues behind CI.
+- `fastmcp` is now constrained to `>=4.0.5,<5`. The old `>=3.3.1` had no upper
+  bound, so a fresh PyPI install of 0.8.1 already resolved fastmcp 4.0.5 while
+  CI and the Docker image still ran 3.4.7. The lockfile now matches what users
+  install, and the next major can no longer reach them untested. Verified over
+  both stdio and HTTP: all seven tools, the server instructions and `/health`
+  behave as before.
 
 ## [0.8.1] — 2026-08-30
 
