@@ -178,8 +178,8 @@ GET https://info.nhi.gov.tw/api/iode0000s01/Dataset?rId=A21030000I-E41001-001
 - `HEAD` on the payload → **405**; no `ETag`, `Last-Modified`, `Cache-Control`,
   or `Accept-Ranges` — only `Content-Length`. So there is no cheap upstream
   version signal; **the payload sha256 is the version identity**.
-- `modified` and `distribution[0].resourceModified` disagree by 13 days in the
-  same response — neither is trusted. `numberOfData` (224,553 = full price
+- `modified` and `distribution[0].resourceModified` have disagreed by 13 days in
+  the same response (they agreed again on 2026-09-12) — neither is trusted. `numberOfData` (224,553 = full price
   history, not current rows) is **logged, never gated** — it grows legitimately
   and the probe→download window is >120 s wide.
 

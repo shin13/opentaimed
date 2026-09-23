@@ -134,13 +134,15 @@ Nothing reaches PyPI until you Approve.
 - **A rehearsal that differs from the real user path proves nothing.** Use
   the same install command on TestPyPI that the README gives users.
 - **Do not put lockfile dependency bumps in the changelog.** `uv.lock` is not
-  shipped: `pyproject.toml` declares open lower bounds (`fastmcp>=3.3.1`,
+  shipped: `pyproject.toml` declares bounds (`fastmcp>=4.0.5,<5`,
   `httpx>=0.28.1`, …), so anyone installing from PyPI resolves their own
-  dependency set at install time. A bump merged here reaches CI and local dev,
-  not users. This matters most for **security** bumps — 0.7.1 was cut the same
-  day `cryptography` went 48→50 for CVE-2026-69247/69248/69249, and listing that
-  under `### Security` would have claimed a protection the release does not
-  deliver. If a dependency change genuinely does reach users, it is because a
+  dependency set at install time. A bump merged here reaches CI, local dev and
+  the Docker image (`uv sync --frozen`), not PyPI users — and the reverse holds
+  too: an unbounded dependency's new major reaches PyPI users before CI ever
+  sees it (fastmcp 4, fixed in #105). This matters most for **security**
+  bumps — 0.7.1 was cut the same day `cryptography` went 48→50 for
+  CVE-2026-69247/69248/69249, and listing that under `### Security` would have
+  claimed a protection the release does not deliver. If a dependency change genuinely does reach users, it is because a
   **bound in `pyproject.toml`** moved — that is the thing worth recording.
 - **Never hand-maintain a version number in two places.** `__init__.py` carried
   a literal `__version__ = "0.1.0"` from the first release through 0.7.0 — wrong
