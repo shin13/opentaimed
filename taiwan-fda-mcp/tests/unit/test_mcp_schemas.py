@@ -34,10 +34,10 @@ TOOL_NAMES = [
 
 
 async def _fetch_schemas() -> dict[str, dict[str, dict | None]]:
-    """Return {tool_name: {'input': inputSchema, 'output': outputSchema}}."""
+    """Return {tool_name: {'input': input_schema, 'output': output_schema}}."""
     async with Client(mcp) as client:
         tools = await client.list_tools()
-    return {t.name: {"input": t.inputSchema, "output": t.outputSchema} for t in tools}
+    return {t.name: {"input": t.input_schema, "output": t.output_schema} for t in tools}
 
 
 def _snapshot_path(tool: str, kind: str) -> Path:
