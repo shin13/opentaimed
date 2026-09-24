@@ -7,31 +7,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-09-25
+
 ### Changed
-- The NHI metadata probe now retries once when the connection drops, and
-  classifies its failures four ways instead of two. `info.nhi.gov.tw` closes
-  connections mid-read often enough for the daily smoke test to catch it twice
-  in five days, and each such failure costs a needless 92 MB re-download,
-  because the store reads a failed probe as "upstream may have moved". The four
-  cases now each name the fix they imply — `DATASET_FETCH_FAILED` (unreachable
-  after retries: upstream availability), `DATASET_HTTP_STATUS` (a non-2xx
-  response: the endpoint moved), `DATASET_EMPTY` (a 2xx carrying no dataset:
-  the ID may be retired) and `DATASET_PARSE_FAILED` (a field moved: schema
-  drift) — and only the first is retried. The retry count stays at one on the
-  query path, where the probe runs under the store lock and every queued query
-  waits behind it; the daily smoke test opts into three attempts instead, since
-  nothing queues behind CI.
-- `fastmcp` is now constrained to `>=4.0.5,<5`. The old `>=3.3.1` had no upper
-  bound, so a fresh PyPI install of 0.8.1 already resolved fastmcp 4.0.5 while
-  CI and the Docker image still ran 3.4.7. The lockfile now matches what users
-  install, and the next major can no longer reach them untested. Verified over
-  both stdio and HTTP: all seven tools, the server instructions and `/health`
-  behave as before.
-- `httpx` is now constrained to `>=0.28.1,<0.29`. Its 1.0 pre-releases are a
-  rewrite that drops `AsyncClient` and the whole exception hierarchy the
-  upstream clients and their retry logic depend on (`RequestError`,
-  `ReadError`, `TimeoutException`, `HTTPStatusError`). Without the bound, 1.0
-  final would reach PyPI installs as soon as it shipped.
+- The NHI metadata probe retries a dropped connection once, instead of treating
+  a brief blip as "upstream may have moved" and re-downloading 92 MB.
+  This is a mitigation, not a cure: a sustained outage still fails, and the
+  daily smoke test has since caught two where every attempt was dropped.
+- NHI probe failures now carry one of four error codes, each naming its likely fix:
+  `DATASET_FETCH_FAILED` (unreachable), `DATASET_HTTP_STATUS` (endpoint moved),
+  `DATASET_EMPTY` (dataset may be retired) and `DATASET_PARSE_FAILED` (schema drift).
+- `fastmcp` is now bounded to `>=4.0.5,<5`. Fresh installs of 0.8.1 were
+  already resolving fastmcp 4, which CI had never tested; CI now tests the major
+  users actually get, and fastmcp 5 can no longer arrive untested.
+  Docker deployments move from fastmcp 3.4.7 to 4.0.5; stdio and HTTP were both re-verified.
+- `httpx` is now bounded to `>=0.28.1,<0.29`. Its 1.0 pre-releases remove
+  `AsyncClient` and the exception classes all three upstream clients rely on,
+  so 1.0 would have broken every data source the day it shipped.
 
 ## [0.8.1] — 2026-08-30
 
@@ -415,7 +407,8 @@ shipped at the cut.
 - macOS 14+, Claude Desktop (stdio transport)
 - TFDA endpoints `mcp.fda.gov.tw` and `data.fda.gov.tw` as of 2026-05.
 
-[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/shin13/opentaimed/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/shin13/opentaimed/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/shin13/opentaimed/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/shin13/opentaimed/compare/v0.7.0...v0.7.1
