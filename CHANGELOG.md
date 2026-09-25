@@ -7,6 +7,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-09-25
+
 ### Changed
 - `pydantic`, `pydantic-settings`, `platformdirs` and `python-json-logger` now have
   upper version limits (`<3`, `<3`, `<5`, `<5`).
@@ -412,7 +414,8 @@ shipped at the cut.
 - macOS 14+, Claude Desktop (stdio transport)
 - TFDA endpoints `mcp.fda.gov.tw` and `data.fda.gov.tw` as of 2026-05.
 
-[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/shin13/opentaimed/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/shin13/opentaimed/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/shin13/opentaimed/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/shin13/opentaimed/compare/v0.7.1...v0.8.0
