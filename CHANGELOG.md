@@ -7,6 +7,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+- `pydantic`, `pydantic-settings`, `platformdirs` and `python-json-logger` now have
+  upper version limits (`<3`, `<3`, `<5`, `<5`).
+  A new major version of any of them can no longer reach users before CI tests it.
+
 ## [0.8.2] — 2026-09-25
 
 ### Changed
