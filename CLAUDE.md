@@ -182,6 +182,9 @@ GET https://info.nhi.gov.tw/api/iode0000s01/Dataset?rId=A21030000I-E41001-001
   the same response (they agreed again on 2026-09-12) — neither is trusted. `numberOfData` (224,553 = full price
   history, not current rows) is **logged, never gated** — it grows legitimately
   and the probe→download window is >120 s wide.
+- **Outages show up as `httpx.ReadError`, not a timeout.** The connection drops
+  mid-read. So the probe retries all of `httpx.RequestError`, not only
+  `TimeoutException`. All five NHI smoke failures so far (2026-09-02 to 09-24) were this.
 
 ## Security Invariants
 
