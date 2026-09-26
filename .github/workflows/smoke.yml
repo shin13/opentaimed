@@ -46,6 +46,33 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
+      # Diagnostic only, never fails the job. The NHI probe drops (ReadError) from
+      # GitHub runners while the same host answers from Taiwan (#113). This logs
+      # where the connection breaks, whether the User-Agent matters, and the
+      # runner's public IP.
+      - name: NHI reachability diagnostic
+        continue-on-error: true
+        env:
+          URL: https://info.nhi.gov.tw/api/iode0010/v1/rest/dataset/A21030000I-E41001
+        run: |
+          # The runner's public IP changes per run. Compare it across passing and
+          # failing nights to see whether only some IP ranges are reset. Forced to
+          # IPv4, because the NHI host has no IPv6 address.
+          echo "--- runner public IPv4: $(curl -4 -sS --max-time 10 https://ifconfig.me/ip || echo unknown)"
+          fmt='http=%{http_code} bytes=%{size_download} dns=%{time_namelookup}s tcp=%{time_connect}s tls=%{time_appconnect}s first_byte=%{time_starttransfer}s total=%{time_total}s\n'
+          for ua in "curl/default" "python-httpx/0.28.1"; do
+            for i in 1 2 3; do
+              echo "--- UA=$ua attempt $i"
+              if [ "$ua" = "curl/default" ]; then
+                curl -sS -o /dev/null --max-time 20 -w "$fmt" "$URL" || echo "curl exit=$?"
+              else
+                curl -sS -o /dev/null --max-time 20 -A "$ua" -w "$fmt" "$URL" || echo "curl exit=$?"
+              fi
+            done
+          done
+          echo "--- verbose (one call)"
+          curl -v -o /dev/null --max-time 20 "$URL" 2>&1 | grep -E '^\*|^> [A-Z]|^< HTTP' || true
+
       - name: Live smoke tests
         env:
           SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
