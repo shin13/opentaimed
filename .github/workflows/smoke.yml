@@ -27,7 +27,10 @@ jobs:
     # ~02:00 Asia/Taipei maintenance window) each insert fetch burns its full
     # 120s x 3-retry budget, so an untimed run has hung ~43 min before failing.
     # Cap it: fail fast on a sustained upstream outage instead of idling a runner.
-    timeout-minutes: 12
+    # The real cap is `timeout` on the test step below. A job timeout ends as
+    # "cancelled", which the alert job ignores, so a hung night would file no
+    # issue. This job cap is only a backstop.
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: taiwan-fda-mcp
@@ -81,7 +84,13 @@ jobs:
             echo "simulate_failure=true -> forcing failure to validate the alert path"
             exit 1
           fi
-          uv run pytest -m smoke -v
+          # A timeout exits 124, so the step fails and the alert job files an issue.
+          rc=0
+          timeout --kill-after=30s 10m uv run pytest -m smoke -v || rc=$?
+          if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            echo "::error::Smoke tests timed out after 10 minutes. An upstream API is likely hanging."
+          fi
+          exit "$rc"
 
   alert:
     name: file failure issue
