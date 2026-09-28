@@ -282,10 +282,13 @@ Current:
   (Monday 18:00 UTC = Tuesday 02:00 Taipei). The `gitleaks scan` job is a
   **required** status check — a red scan blocks the merge (see Branch
   protection below).
-- `.github/workflows/smoke.yml` — daily live smoke test (`pytest -m smoke`,
-  18:00 UTC = 02:00 Taipei) against the real TFDA APIs, to catch upstream
-  contract drift within hours; a separate `alert` job dedup-files a GitHub
-  issue on failure.
+- `.github/workflows/smoke.yml` — daily live smoke test (18:00 UTC = 02:00
+  Taipei) against the real upstream APIs, to catch contract drift within hours.
+  TFDA (`-m "smoke and not nhi"`) and NHI (`-m "smoke and nhi"`) run as
+  separate jobs. Each failure goes to its own dedup issue, labelled
+  `smoke-failure` or `nhi-smoke-failure`. NHI resets connections from GitHub
+  runners (#113), so keep new NHI smoke tests under the `nhi` marker, or they
+  will turn the TFDA alert red too.
 - `.github/workflows/audit.yml` — weekly `pip-audit` of the locked runtime
   deps (Monday 19:00 UTC), complementing Dependabot; same dedup-issue alert.
 - `.github/workflows/publish.yml` — the only workflow that ships anything.

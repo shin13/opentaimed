@@ -1,10 +1,14 @@
 name: smoke
 
-# Daily live smoke test against the real TFDA APIs. FDA contract drift (a
+# Daily live smoke tests against the real upstream APIs. Contract drift (a
 # renamed field, a dropped section, a moved license number) propagates into LLM
-# citations within hours, so this runs daily rather than weekly. The `smoke`
-# job reads code + calls the public FDA APIs; only the `alert` job may write
-# issues.
+# citations within hours, so this runs daily rather than weekly.
+#
+# TFDA and NHI run as separate jobs, each with its own issue. NHI resets
+# connections from GitHub runners (#113), so it can stay red for days. In one
+# shared job that hid every TFDA result behind the same "failed again" comment.
+# The smoke jobs read code and call the public APIs. Only the `alert` job may
+# write issues.
 
 on:
   schedule:
@@ -12,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       simulate_failure:
-        description: "Force the smoke job to fail (to validate the alert path)"
+        description: "Force both smoke jobs to fail (to validate the alert path)"
         type: boolean
         default: false
 
@@ -20,8 +24,8 @@ permissions:
   contents: read
 
 jobs:
-  smoke:
-    name: live smoke (-m smoke)
+  tfda:
+    name: TFDA live smoke
     runs-on: ubuntu-latest
     # A healthy run is ~2 min. When mcp.fda.gov.tw is unreachable (common in the
     # ~02:00 Asia/Taipei maintenance window) each insert fetch burns its full
@@ -31,6 +35,46 @@ jobs:
     # "cancelled", which the alert job ignores, so a hung night would file no
     # issue. This job cap is only a backstop.
     timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: taiwan-fda-mcp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: taiwan-fda-mcp/uv.lock
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Live smoke tests (TFDA)
+        env:
+          SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
+        run: |
+          if [ "$SIMULATE_FAILURE" = "true" ]; then
+            echo "simulate_failure=true -> forcing failure to validate the alert path"
+            exit 1
+          fi
+          # A timeout exits 124, so the step fails and the alert job files an issue.
+          rc=0
+          timeout --kill-after=30s 10m uv run pytest -m "smoke and not nhi" -v || rc=$?
+          if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            echo "::error::Smoke tests timed out after 10 minutes. An upstream API is likely hanging."
+          fi
+          exit "$rc"
+
+  nhi:
+    name: NHI live smoke
+    runs-on: ubuntu-latest
+    # The NHI probe gives up after ~66 s at worst (3 attempts). The step timeout
+    # below is the real cap. This job cap is only a backstop.
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: taiwan-fda-mcp
@@ -76,7 +120,7 @@ jobs:
           echo "--- verbose (one call)"
           curl -v -o /dev/null --max-time 20 "$URL" 2>&1 | grep -E '^\*|^> [A-Z]|^< HTTP' || true
 
-      - name: Live smoke tests
+      - name: Live smoke tests (NHI)
         env:
           SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
         run: |
@@ -84,33 +128,49 @@ jobs:
             echo "simulate_failure=true -> forcing failure to validate the alert path"
             exit 1
           fi
-          # A timeout exits 124, so the step fails and the alert job files an issue.
+          # pytest exits 5 if no test carries the `nhi` marker, so a lost marker
+          # fails here instead of passing with nothing run.
           rc=0
-          timeout --kill-after=30s 10m uv run pytest -m smoke -v || rc=$?
+          timeout --kill-after=30s 5m uv run pytest -m "smoke and nhi" -v || rc=$?
           if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
-            echo "::error::Smoke tests timed out after 10 minutes. An upstream API is likely hanging."
+            echo "::error::NHI smoke test timed out after 5 minutes. info.nhi.gov.tw is likely hanging."
           fi
           exit "$rc"
 
   alert:
-    name: file failure issue
-    needs: smoke
+    name: file failure issue (${{ matrix.job }})
+    needs: [tfda, nhi]
     if: failure()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - job: tfda
+            label: smoke-failure
+            desc: "Daily TFDA live smoke test failed"
+            title: "Daily TFDA smoke test failing"
+            body: "The daily TFDA live smoke test (`pytest -m \"smoke and not nhi\"`) failed. It covers `mcp.fda.gov.tw` and `data.fda.gov.tw`.\n\nA transient outage is common in the ~02:00 Asia/Taipei window, so re-run the workflow. If it passes, it was a blip. If it fails again quickly on an assertion, it is contract drift (a renamed field, a dropped section, a moved license), so investigate before trusting insert citations."
+          - job: nhi
+            label: nhi-smoke-failure
+            desc: "Daily NHI live smoke test failed"
+            title: "Daily NHI smoke test failing"
+            body: "The daily NHI live smoke test (`pytest -m \"smoke and nhi\"`) failed. **Read the failing test's error before re-running.** `test_smoke_nhi_probe_is_reachable` raises `DatasetFetchError` carrying one of four RCodes:\n\n| RCode | Meaning | Fix |\n|---|---|---|\n| `DATASET_FETCH_FAILED` | unreachable after 3 attempts | upstream availability — confirm the host, then close if it was a blip |\n| `DATASET_HTTP_STATUS` | a response, non-2xx (e.g. 404) | the endpoint moved — re-verify the URL and dataset ID |\n| `DATASET_EMPTY` | 2xx carrying no dataset | investigate whether the dataset ID was retired |\n| `DATASET_PARSE_FAILED` | a dataset, but a field moved | upstream schema drift — the parsing logic must follow it |\n\nA plain `AssertionError` means reachable and parsed, but an implausible row count. Investigate before trusting NHI answers.\n\n**Known cause of `DATASET_FETCH_FAILED` (#113):** `info.nhi.gov.tw` resets connections from GitHub runners while it answers from Taiwan. If the diagnostic step shows `Connection reset by peer`, this is the runner path, not an NHI outage. Check from Taiwan before concluding anything."
     steps:
       - name: Dedup-file a smoke-failure issue
+        if: needs[matrix.job].result == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          LABEL: smoke-failure
-          DESC: "Daily TFDA live smoke test failed"
-          TITLE: "Daily TFDA smoke test failing"
-          BODY: "The daily live smoke test (`pytest -m smoke`) failed. **Read the failing test's error before re-running** — for the NHI probe the error names the fix itself, so guessing is no longer necessary.\n\n**`test_smoke_nhi_probe_is_reachable`** raises `DatasetFetchError` carrying one of four RCodes:\n\n| RCode | Meaning | Fix |\n|---|---|---|\n| `DATASET_FETCH_FAILED` | unreachable after 3 attempts | upstream availability — confirm the host, then close if it was a blip |\n| `DATASET_HTTP_STATUS` | a response, non-2xx (e.g. 404) | the endpoint moved — re-verify the URL and dataset ID |\n| `DATASET_EMPTY` | 2xx carrying no dataset | investigate whether the dataset ID was retired |\n| `DATASET_PARSE_FAILED` | a dataset, but a field moved | upstream schema drift — the parsing logic must follow it |\n\nA plain `AssertionError` there means reachable and parsed, but an implausible row count — investigate before trusting NHI answers.\n\n**The TFDA tests** (`mcp.fda.gov.tw` / `data.fda.gov.tw`) do not yet carry this taxonomy. For those, the old triage still applies: a transient outage is common in the ~02:00 Asia/Taipei window, so re-run the workflow — if it passes it was a blip; if it fails again quickly on an assertion, it is contract drift (a renamed field, a dropped section, a moved license), so investigate before trusting insert citations."
+          LABEL: ${{ matrix.label }}
+          DESC: ${{ matrix.desc }}
+          TITLE: ${{ matrix.title }}
+          BODY: ${{ matrix.body }}
         run: |
           set -euo pipefail
           gh label create "$LABEL" -R "$REPO" --color B60205 --description "$DESC" --force
