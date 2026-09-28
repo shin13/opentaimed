@@ -7,6 +7,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- `DEPLOYMENT.md` lists the network needs of the shared HTTP service: outbound hosts
+  and port, proxy and TLS-inspection settings, and a reachability check to run first.
+  NHI has reset connections from hosts outside Taiwan, so a deployment abroad may lose the NHI tools.
+
 ## [0.8.3] — 2026-09-25
 
 ### Changed
