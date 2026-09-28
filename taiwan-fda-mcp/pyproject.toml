@@ -63,6 +63,7 @@ markers = [
     "unit: unit tests (no network)",
     "integration: integration tests (real network)",
     "smoke: live real-API smoke tests guarding the TFDA contract (subset of integration)",
+    "nhi: smoke tests that call info.nhi.gov.tw (run in a separate CI job from TFDA)",
     "slow: slow tests",
 ]
 addopts = "-m 'not integration'"
