@@ -84,7 +84,10 @@ docker compose up -d --build
   internal network, **not** reachable except through the proxy.
 - Single worker / single instance only (shared in-memory state is per-process;
   Redis required before scaling — ADR-0010).
-- Egress firewall must allow `mcp.fda.gov.tw`, `data.fda.gov.tw`, and `info.nhi.gov.tw`.
+- Egress firewall must allow `mcp.fda.gov.tw`, `data.fda.gov.tw`, and `info.nhi.gov.tw`
+  (HTTPS, TCP 443). Proxy, TLS-inspection, and outside-Taiwan notes are in
+  [DEPLOYMENT.md](https://github.com/shin13/opentaimed/blob/main/taiwan-fda-mcp/DEPLOYMENT.md).
+  NHI has reset connections from hosts outside Taiwan, so check from the host first.
 - Store caches persist on the named `fda-cache` volume (mounted at `/cache`). Keep
   it: without it, every redeploy re-downloads the fresh 92 MB / >120 s NHI dataset
   (Dataset 37/42 too).
