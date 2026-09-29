@@ -57,6 +57,10 @@ In one PR (run the verification gate before pushing):
       (`shipped — vX.Y.Z`).
 - [ ] Gate (from `taiwan-fda-mcp/`):
       `uv run ruff check . && uv run pyright src && uv run pytest`
+- [ ] NHI smoke, **run from Taiwan** (from `taiwan-fda-mcp/`):
+      `uv run pytest -m "smoke and nhi" -v`. CI does not run it, because NHI
+      resets connections from GitHub runners (#113). See CLAUDE.md "CI/CD" for
+      how to read a failure.
 
 Merge the PR (PR-only flow — CI must be green).
 
