@@ -118,7 +118,7 @@ async def test_every_insert_carries_attribution(license_no: str):
     assert resp.attribution.data_official is True
 
 
-@pytest.mark.nhi  # not run in CI: NHI resets GitHub runners (#113). Run it from Taiwan.
+@pytest.mark.nhi  # not run in CI: NHI resets most GitHub runners (#113). Run it from Taiwan.
 async def test_smoke_nhi_probe_is_reachable():
     """The NHI metadata probe is the cheap half of the two-tier refresh.
 

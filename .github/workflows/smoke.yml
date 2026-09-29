@@ -5,8 +5,8 @@ name: smoke
 # citations within hours, so this runs daily rather than weekly.
 #
 # The NHI smoke test (`-m "smoke and nhi"`) is NOT run here. NHI resets
-# connections from GitHub runners while it answers from Taiwan (#113), so it is
-# run by hand from Taiwan instead. See CLAUDE.md "CI/CD".
+# connections from many GitHub runners, but not all, while it answers from
+# Taiwan (#113). So it is run by hand from Taiwan instead. See CLAUDE.md "CI/CD".
 # The `tfda` job reads code and calls the public APIs. Only the `alert` job may
 # write issues.
 

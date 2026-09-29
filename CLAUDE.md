@@ -185,8 +185,8 @@ GET https://info.nhi.gov.tw/api/iode0000s01/Dataset?rId=A21030000I-E41001-001
 - **A dropped connection shows up as `httpx.ReadError`, not a timeout.** So the
   probe retries all of `httpx.RequestError`, not only `TimeoutException`. Every
   NHI smoke failure in CI (2026-09-02 to 09-28) was this. They were not NHI
-  outages: NHI resets connections from GitHub runners but answers from Taiwan
-  (#113). Check from Taiwan before calling it an outage.
+  outages: NHI resets connections from many GitHub runners but answers from
+  Taiwan (#113). It depends on the runner: one run on 2026-09-28 got through. Check from Taiwan before calling it an outage.
 
 ## Security Invariants
 
@@ -288,8 +288,9 @@ Current:
   (`-m "smoke and not nhi"`, 18:00 UTC = 02:00 Taipei), to catch contract
   drift within hours. A separate `alert` job dedup-files a `smoke-failure`
   issue on failure.
-- **The NHI smoke test is not in CI.** NHI resets connections from GitHub
-  runners while it answers from Taiwan (#113). So it is run by hand from
+- **The NHI smoke test is not in CI.** NHI resets connections from many GitHub
+  runners, but not all, while it answers from Taiwan (#113). A CI result would
+  mostly tell you which runner you got. So it is run by hand from
   Taiwan, at the start of each working session and before every release
   (see `RELEASING.md`). It takes about one second:
 
