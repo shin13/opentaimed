@@ -29,10 +29,11 @@ redirected to another host when checked.
 
 ## NHI may refuse hosts outside Taiwan
 
-`info.nhi.gov.tw` resets connections from GitHub Actions runners (Azure, outside
-Taiwan). TCP and TLS succeed, the request is sent, and then the connection is
-reset after 3–4 s. The same request from Taiwan returns 200 in under a second.
-See issue #113.
+`info.nhi.gov.tw` resets connections from many GitHub Actions runners (Azure,
+outside Taiwan). TCP and TLS succeed, the request is sent, and then the
+connection is reset after 3–4 s. The same request from Taiwan returns 200 in
+under a second. It depends on the runner: four runner IPs were reset, and one
+(on 2026-09-28) got 200 every time. See issue #113.
 
 Why NHI does this is not known. It may block cloud or foreign IP ranges. That is
 not proven. So **a deployment outside Taiwan (for example an AWS region abroad)

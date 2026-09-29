@@ -182,9 +182,11 @@ GET https://info.nhi.gov.tw/api/iode0000s01/Dataset?rId=A21030000I-E41001-001
   the same response (they agreed again on 2026-09-12) — neither is trusted. `numberOfData` (224,553 = full price
   history, not current rows) is **logged, never gated** — it grows legitimately
   and the probe→download window is >120 s wide.
-- **Outages show up as `httpx.ReadError`, not a timeout.** The connection drops
-  mid-read. So the probe retries all of `httpx.RequestError`, not only
-  `TimeoutException`. All five NHI smoke failures so far (2026-09-02 to 09-24) were this.
+- **A dropped connection shows up as `httpx.ReadError`, not a timeout.** So the
+  probe retries all of `httpx.RequestError`, not only `TimeoutException`. Every
+  NHI smoke failure in CI (2026-09-02 to 09-28) was this. They were not NHI
+  outages: NHI resets connections from many GitHub runners but answers from
+  Taiwan (#113). It depends on the runner: one run on 2026-09-28 got through. Check from Taiwan before calling it an outage.
 
 ## Security Invariants
 
@@ -282,13 +284,35 @@ Current:
   (Monday 18:00 UTC = Tuesday 02:00 Taipei). The `gitleaks scan` job is a
   **required** status check — a red scan blocks the merge (see Branch
   protection below).
-- `.github/workflows/smoke.yml` — daily live smoke test (18:00 UTC = 02:00
-  Taipei) against the real upstream APIs, to catch contract drift within hours.
-  TFDA (`-m "smoke and not nhi"`) and NHI (`-m "smoke and nhi"`) run as
-  separate jobs. Each failure goes to its own dedup issue, labelled
-  `smoke-failure` or `nhi-smoke-failure`. NHI resets connections from GitHub
-  runners (#113), so keep new NHI smoke tests under the `nhi` marker, or they
-  will turn the TFDA alert red too.
+- `.github/workflows/smoke.yml` — daily live TFDA smoke test
+  (`-m "smoke and not nhi"`, 18:00 UTC = 02:00 Taipei), to catch contract
+  drift within hours. A separate `alert` job dedup-files a `smoke-failure`
+  issue on failure.
+- **The NHI smoke test is not in CI.** NHI resets connections from many GitHub
+  runners, but not all, while it answers from Taiwan (#113). A CI result would
+  mostly tell you which runner you got. So it is run by hand from
+  Taiwan, at the start of each working session and before every release
+  (see `RELEASING.md`). It takes about one second:
+
+  ```bash
+  cd taiwan-fda-mcp && uv run pytest -m "smoke and nhi" -v
+  ```
+
+  Keep every NHI smoke test under the `nhi` marker, or it will run in CI and
+  turn the TFDA alert red. A failure raises `DatasetFetchError` with an RCode
+  that names the fix:
+
+  | RCode | Meaning | Fix |
+  |---|---|---|
+  | `DATASET_FETCH_FAILED` | unreachable after 3 attempts | check the network and the host, then re-run |
+  | `DATASET_HTTP_STATUS` | a non-2xx response (e.g. 404) | the endpoint moved: re-verify the URL and dataset ID |
+  | `DATASET_EMPTY` | 2xx with no dataset | check whether the dataset ID was retired |
+  | `DATASET_PARSE_FAILED` | a dataset, but a field moved | schema drift: the parsing must follow it |
+
+  A plain `AssertionError` means reachable and parsed, but an implausible row
+  count. Investigate before trusting NHI answers. Open an issue with the
+  `nhi-smoke-failure` label for any failure that is not a local network
+  problem.
 - `.github/workflows/audit.yml` — weekly `pip-audit` of the locked runtime
   deps (Monday 19:00 UTC), complementing Dependabot; same dedup-issue alert.
 - `.github/workflows/publish.yml` — the only workflow that ships anything.

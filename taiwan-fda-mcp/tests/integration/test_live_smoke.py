@@ -118,7 +118,7 @@ async def test_every_insert_carries_attribution(license_no: str):
     assert resp.attribution.data_official is True
 
 
-@pytest.mark.nhi  # runs in its own CI job, so an NHI failure never hides a TFDA one (#113)
+@pytest.mark.nhi  # not run in CI: NHI resets most GitHub runners (#113). Run it from Taiwan.
 async def test_smoke_nhi_probe_is_reachable():
     """The NHI metadata probe is the cheap half of the two-tier refresh.
 
@@ -146,7 +146,7 @@ async def test_smoke_nhi_probe_is_reachable():
     # Deliberately more patient than production, which caps at one retry
     # because it probes under the store lock. Nothing queues behind CI, so
     # spend the wall-clock here instead: 3 attempts, 2 s and 4 s apart. Worst
-    # case ~66 s, well inside the NHI job's 5-minute step timeout.
+    # case ~66 s.
     meta = await probe_metadata(
         "https://info.nhi.gov.tw", timeout=20.0, max_retries=2, retry_backoff=2.0
     )
