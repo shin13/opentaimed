@@ -615,7 +615,6 @@ async def get_drug_appearance(
     except DatasetFetchError as exc:
         return GetDrugAppearanceResponse(
             license_no=license_no,
-            appearance_on_file=False,
             error=ErrorInfo(code=exc.code.name, message=exc.message),
             attribution=_ATTRIBUTION,
         )

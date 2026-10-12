@@ -246,9 +246,16 @@
       "description": "Null when not on file."
     },
     "item_on_file": {
-      "default": false,
-      "description": "True iff this 健保代碼 exists in the NHI drug-item file. False means 查無此健保代碼 — usually a mistyped code.",
-      "type": "boolean"
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "True iff this 健保代碼 exists in the NHI drug-item file. False means 查無此健保代碼 — usually a mistyped code. Null means it could not be determined because `error` is set: report the error, and NEVER say the code is mistyped or 查無此健保代碼."
     },
     "nhi_code": {
       "description": "Echo of the nhi_code the caller passed.",

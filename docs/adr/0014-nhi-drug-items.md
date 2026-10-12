@@ -48,6 +48,10 @@ Operational details:
   此藥未納入健保給付 — which is **42.9%** of active licences (9,570 / 22,297),
   a main path, not an edge case. Each tool therefore carries exactly one
   unconditional flag (`item_on_file`, `nhi_listed`).
+  *Amended 2026-10-13:* these flags (and `any_reimbursed`) are now
+  `true | false | null`. `null` means the lookup failed and `error` is set.
+  Before, a failed lookup left them `false`, which reads as the fact
+  未納入健保給付 or 查無此健保代碼.
 - **Current rows including 停止給付.** We ingest the currently-effective rows
   (~45,175), which include delisted items, not only the ~13,916 reimbursed.
   「查無此藥」and「此藥已停止給付」are different clinical answers; dropping the

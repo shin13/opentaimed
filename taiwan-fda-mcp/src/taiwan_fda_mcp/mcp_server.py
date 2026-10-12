@@ -124,7 +124,11 @@ mcp: FastMCP = FastMCP(
         "(\"查無此藥 on TFDA\") — do NOT guess from training data.\n"
         "  - If any tool returns an error, report the error verbatim. Do NOT "
         "silently fall back to training data; the user needs to know when "
-        "official data was unavailable.\n\n"
+        "official data was unavailable.\n"
+        "  - A flag that is `null` (`nhi_listed`, `any_reimbursed`, `item_on_file`, "
+        "`appearance_on_file`) means the answer could NOT be determined, because "
+        "`error` is set. Report the error. NEVER turn a null into a fact such as "
+        "未納入健保給付, 停止給付, 查無此健保代碼, or 未載明. Only `false` is a fact.\n\n"
         "查詢台灣食藥署 (TFDA) 維護的官方藥物資訊：藥品許可證、仿單章節、更新追蹤。\n\n"  # noqa: RUF001
         "本 server 為個人開發者專案，**非台灣政府官方產品**，僅作為 TFDA 公開資料"  # noqa: RUF001
         "(data.fda.gov.tw Dataset 37 + mcp.fda.gov.tw GetDrugDoc API) 的查詢介面，"  # noqa: RUF001
@@ -153,7 +157,8 @@ mcp: FastMCP = FastMCP(
         "appearance source; `get_package_insert` images are manufacturer-embedded "
         "insert images (sparse) and are NOT the pill-appearance source. Appearance "
         "covers only a subset of drugs — on a miss the tool returns "
-        "`appearance_on_file: false` (未載明); do NOT infer an appearance.\n\n"
+        "`appearance_on_file: false` (未載明); do NOT infer an appearance. "
+        "`appearance_on_file: null` means the lookup failed: report the error.\n\n"
         "**Black box warning (special_warning):** When this field is non-empty, "
         "you MUST quote its content verbatim in any response that mentions "
         "warnings or contraindications. Do NOT paraphrase, summarise, or merge "
@@ -198,7 +203,9 @@ mcp: FastMCP = FastMCP(
         "  - 藥名 → 健保給付: `search_drugs` → pick license_no → "
         "`list_nhi_drug_items`.\n"
         "  - `nhi_listed=false` means 此藥未納入健保給付 — it is a fact about NHI "
-        "coverage, NOT 查無此藥. This is true of 42.9% of active licences.\n"
+        "coverage, NOT 查無此藥. This is true of 42.9% of active licences. "
+        "`nhi_listed=null` means NHI could not be reached: report the error, "
+        "NEVER say 未納入健保給付.\n"
         "  - `reimbursement_status='delisted'` means 支付價 0.00 = 停止給付. NEVER "
         "describe it as a free drug. `'not_priced'` means 支付價 is '-' and NHI "
         "does not document why — report 未載明, do NOT infer a reason.\n"
@@ -316,7 +323,9 @@ async def get_drug_appearance(license_no: str) -> GetDrugAppearanceResponse:
 
     Appearance is documented for only a SUBSET of licensed drugs. When TFDA has
     no appearance on file, `appearance_on_file` is false and every descriptor is
-    empty — this is 未載明, not an error; do NOT infer an appearance.
+    empty — this is 未載明, not an error; do NOT infer an appearance. When the
+    lookup itself fails, `appearance_on_file` is null and `error` is set — report
+    the error, and never call it 未載明.
 
     Args:
         license_no: full Chinese license string (e.g. "內衛成製字第000075號"),
@@ -349,7 +358,8 @@ async def get_nhi_drug_item(nhi_code: str) -> GetNhiDrugItemResponse:
     reason NHI does not document — report it as 未載明 and do not infer one.
 
     When `item_on_file` is false the code is not in the NHI file — say
-    「查無此健保代碼」, do not guess a drug.
+    「查無此健保代碼」, do not guess a drug. When it is null, NHI could not be
+    reached and `error` is set — report the error, and never say 查無此健保代碼.
 
     Args:
         nhi_code: 健保藥品代號, e.g. "AC49322100".
@@ -374,6 +384,9 @@ async def list_nhi_drug_items(license_no: str, limit: int = 25) -> ListNhiDrugIt
     「此藥未納入健保給付」— never as 查無此藥.
 
     `any_reimbursed=false` with `nhi_listed=true` means every item is 停止給付.
+
+    `nhi_listed=null` (and `any_reimbursed=null`) is NOT a fact: NHI could not be
+    reached and `error` is set. Report the error. Never say 未納入健保給付.
 
     `payment_rule_urls` are official NHI chapter PDFs, passed through and not
     fetched by this server; open them client-side if the regulation text is

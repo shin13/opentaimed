@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+- `nhi_listed`, `any_reimbursed`, `item_on_file` and `appearance_on_file` are now
+  `true`, `false` or `null`. `null` means the lookup failed and `error` is set.
+  Before, a failed lookup returned `false`, which reads as a fact such as
+  此藥未納入健保給付. Clients that test these flags must handle `null`.
+
 ### Added
 - `DEPLOYMENT.md` lists the network needs of the shared HTTP service: outbound hosts
   and port, proxy and TLS-inspection settings, and a reachability check to run first.

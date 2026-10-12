@@ -166,12 +166,14 @@ class GetDrugAppearanceResponse(BaseModel):
 
     license_no: str = Field(description="Echo of the license_no the caller passed.")
     error: ErrorInfo | None = Field(default=None, description="Null on success.")
-    appearance_on_file: bool = Field(
-        default=False,
+    appearance_on_file: bool | None = Field(
+        default=None,
         description=(
             "True iff TFDA Dataset 42 has an appearance row for this license. "
             "False = 未載明 (not documented) — appearance covers only ~24% of "
-            "active licenses; do NOT infer an appearance when this is false."
+            "active licenses; do NOT infer an appearance when this is false. Null "
+            "means it could not be determined because `error` is set: report the "
+            "error, and NEVER say 未載明."
         ),
     )
     name_zh: str = Field(default="", description="中文品名 (empty when not on file).")
@@ -572,11 +574,13 @@ class GetNhiDrugItemResponse(BaseModel):
 
     nhi_code: str = Field(description="Echo of the nhi_code the caller passed.")
     error: ErrorInfo | None = Field(default=None, description="Null on success.")
-    item_on_file: bool = Field(
-        default=False,
+    item_on_file: bool | None = Field(
+        default=None,
         description=(
             "True iff this 健保代碼 exists in the NHI drug-item file. False means "
-            "查無此健保代碼 — usually a mistyped code."
+            "查無此健保代碼 — usually a mistyped code. Null means it could not be "
+            "determined because `error` is set: report the error, and NEVER say the "
+            "code is mistyped or 查無此健保代碼."
         ),
     )
     item: NhiDrugItemRow | None = Field(default=None, description="Null when not on file.")
@@ -603,19 +607,23 @@ class ListNhiDrugItemsResponse(BaseModel):
 
     license_no: str = Field(description="Echo of the license_no the caller passed.")
     error: ErrorInfo | None = Field(default=None, description="Null on success.")
-    nhi_listed: bool = Field(
-        default=False,
+    nhi_listed: bool | None = Field(
+        default=None,
         description=(
             "True iff this licence has at least one NHI item. False is a FACT, not "
             "a failure: 此藥未納入健保給付. It applies to 42.9% of active licences, so "
-            "report it as 'not covered by NHI', never as 查無此藥."
+            "report it as 'not covered by NHI', never as 查無此藥. Null means it could "
+            "not be determined because `error` is set: report the error, and NEVER "
+            "say 未納入健保給付."
         ),
     )
-    any_reimbursed: bool = Field(
-        default=False,
+    any_reimbursed: bool | None = Field(
+        default=None,
         description=(
             "True iff at least one item is currently reimbursed. False with "
-            "nhi_listed true means every item is 停止給付."
+            "nhi_listed true means every item is 停止給付. Null means it could not be "
+            "determined because `error` is set: report the error, and NEVER say "
+            "停止給付 or 未給付."
         ),
     )
     items: list[NhiDrugItemRow] = Field(

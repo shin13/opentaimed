@@ -136,21 +136,21 @@ async def test_first_run_outage_returns_an_error_and_no_data(tmp_path, retry_sle
 
     assert r.error is not None
     assert r.error.code == "DATASET_FETCH_FAILED"
+    assert r.item_on_file is None  # unknown, not 查無此健保代碼
     assert r.item is None
     assert r.source_url is None
     assert r.dataset_retrieved_at is None
 
 
 @respx.mock
-async def test_first_run_outage_list_reports_nhi_listed_false_beside_the_error(
+async def test_first_run_outage_list_reports_unknown_coverage_beside_the_error(
     tmp_path, retry_sleeps
 ):
-    """RISK, pinned as-is: `nhi_listed` is False next to the error.
+    """`nhi_listed` and `any_reimbursed` are null next to the error, never False.
 
-    The field's own description calls False a FACT (此藥未納入健保給付). An LLM
-    that reads the field before the error could tell a user "not covered by
-    NHI" when the truth is "NHI could not be reached". The server instructions
-    say to report errors verbatim, which is the only guard today.
+    False is a FACT (此藥未納入健保給付). Before this was null, an LLM that read
+    the field before the error could tell a user "not covered by NHI" when the
+    truth was "NHI could not be reached".
     """
     respx.get(_PROBE_URL).mock(side_effect=_reset)
     respx.get(_DOWNLOAD_URL).mock(side_effect=_reset)
@@ -159,7 +159,8 @@ async def test_first_run_outage_list_reports_nhi_listed_false_beside_the_error(
 
     assert r.error is not None
     assert r.error.code == "DATASET_FETCH_FAILED"
-    assert r.nhi_listed is False
+    assert r.nhi_listed is None
+    assert r.any_reimbursed is None
     assert r.items == []
     assert r.total == 0
 
