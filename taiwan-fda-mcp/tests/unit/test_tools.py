@@ -12,6 +12,7 @@ import httpx
 import pytest
 import respx
 
+import taiwan_fda_mcp.sources.opendata.appearance_store as _appearance_store_mod
 import taiwan_fda_mcp.tools as _tools_mod
 from taiwan_fda_mcp.config import Settings
 from taiwan_fda_mcp.exceptions import DatasetFetchError, RCode
@@ -1362,6 +1363,20 @@ async def test_get_drug_appearance_miss_is_not_error(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_get_drug_appearance_fetch_failure_is_unknown_not_absent(tmp_path, monkeypatch):
+    """No cache and Dataset 42 unreachable: the flag is null, never False (未載明)."""
+
+    async def _boom(*_args, **_kwargs):
+        raise DatasetFetchError(RCode.DATASET_FETCH_FAILED, "down")
+
+    monkeypatch.setattr(_appearance_store_mod, "fetch_dataset42", _boom)
+    resp = await get_drug_appearance("L1", settings=_appearance_settings(tmp_path))
+    assert resp.error is not None
+    assert resp.error.code == "DATASET_FETCH_FAILED"
+    assert resp.appearance_on_file is None
+
+
+@pytest.mark.asyncio
 async def test_get_drug_appearance_rejects_offhost_image_url(tmp_path):
     _seed_appearance_cache(
         tmp_path,
@@ -1372,17 +1387,19 @@ async def test_get_drug_appearance_rejects_offhost_image_url(tmp_path):
     assert resp.image_url is None  # off-host URL dropped
 
 
-def test_get_nhi_drug_item_response_defaults_are_safe():
+def test_get_nhi_drug_item_response_defaults_to_unknown():
+    # False is a clinical fact (查無此健保代碼), so an unset flag must read as unknown.
     r = GetNhiDrugItemResponse(nhi_code="X")
-    assert r.item_on_file is False
+    assert r.item_on_file is None
     assert r.item is None
     assert r.is_stale is False
 
 
-def test_list_nhi_drug_items_response_defaults_are_safe():
+def test_list_nhi_drug_items_response_defaults_to_unknown():
+    # False is a clinical fact (此藥未納入健保給付), so an unset flag must read as unknown.
     r = ListNhiDrugItemsResponse(license_no="X")
-    assert r.nhi_listed is False
-    assert r.any_reimbursed is False
+    assert r.nhi_listed is None
+    assert r.any_reimbursed is None
     assert r.items == []
     assert r.total == 0
     assert r.truncated is False

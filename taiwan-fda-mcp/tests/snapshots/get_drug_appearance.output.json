@@ -3,9 +3,16 @@
   "description": "Response shape for `get_drug_appearance` (Dataset 42, ADR-0013).\n\nForward-only (license_no → appearance). Citation mirrors the dataset-backed\n`SearchDrugsResponse` precedent: `source_url` + `dataset_retrieved_at` +\n`attribution` (Dataset 42 has no per-row date). `appearance_on_file=false`\nis the 未載明 fact — the license is not in Dataset 42 — NOT a tool failure.",
   "properties": {
     "appearance_on_file": {
-      "default": false,
-      "description": "True iff TFDA Dataset 42 has an appearance row for this license. False = 未載明 (not documented) — appearance covers only ~24% of active licenses; do NOT infer an appearance when this is false.",
-      "type": "boolean"
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "True iff TFDA Dataset 42 has an appearance row for this license. False = 未載明 (not documented) — appearance covers only ~24% of active licenses; do NOT infer an appearance when this is false. Null means it could not be determined because `error` is set: report the error, and NEVER say 未載明."
     },
     "attribution": {
       "anyOf": [

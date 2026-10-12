@@ -3,9 +3,16 @@
   "description": "Response shape for `list_nhi_drug_items` (reverse: 許可證 → items).",
   "properties": {
     "any_reimbursed": {
-      "default": false,
-      "description": "True iff at least one item is currently reimbursed. False with nhi_listed true means every item is 停止給付.",
-      "type": "boolean"
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "True iff at least one item is currently reimbursed. False with nhi_listed true means every item is 停止給付. Null means it could not be determined because `error` is set: report the error, and NEVER say 停止給付 or 未給付."
     },
     "attribution": {
       "anyOf": [
@@ -250,9 +257,16 @@
       "type": "string"
     },
     "nhi_listed": {
-      "default": false,
-      "description": "True iff this licence has at least one NHI item. False is a FACT, not a failure: 此藥未納入健保給付. It applies to 42.9% of active licences, so report it as 'not covered by NHI', never as 查無此藥.",
-      "type": "boolean"
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "True iff this licence has at least one NHI item. False is a FACT, not a failure: 此藥未納入健保給付. It applies to 42.9% of active licences, so report it as 'not covered by NHI', never as 查無此藥. Null means it could not be determined because `error` is set: report the error, and NEVER say 未納入健保給付."
     },
     "source_url": {
       "anyOf": [

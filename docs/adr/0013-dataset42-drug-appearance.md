@@ -51,6 +51,9 @@ Operational details:
   licenses, so a miss returns `appearance_on_file: false` (empty descriptors,
   `image_url: null`) — a positive "not documented" fact, not an `error`. Mirrors
   the `confirmed_absent` precedent.
+  *Amended 2026-10-13:* `appearance_on_file` is now `true | false | null`.
+  `null` means the Dataset 42 lookup failed and `error` is set. Only `false`
+  means 未載明.
 - **Citation** mirrors the dataset-backed `SearchDrugsResponse` precedent:
   `source_url` (Dataset 42 export URL) + `dataset_retrieved_at` + `attribution`.
   Dataset 42's lack of a per-row date is consistent with that precedent.
