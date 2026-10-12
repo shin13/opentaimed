@@ -7,6 +7,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-10-13
+
 ### Changed
 - `nhi_listed`, `any_reimbursed`, `item_on_file` and `appearance_on_file` are now
   `true`, `false` or `null`. `null` means the lookup failed and `error` is set.
@@ -425,7 +427,8 @@ shipped at the cut.
 - macOS 14+, Claude Desktop (stdio transport)
 - TFDA endpoints `mcp.fda.gov.tw` and `data.fda.gov.tw` as of 2026-05.
 
-[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/shin13/opentaimed/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/shin13/opentaimed/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/shin13/opentaimed/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/shin13/opentaimed/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/shin13/opentaimed/compare/v0.8.0...v0.8.1
