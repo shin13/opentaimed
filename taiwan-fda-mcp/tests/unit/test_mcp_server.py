@@ -22,7 +22,7 @@ from taiwan_fda_mcp.sources.opendata.dataset42 import write_to_cache as write_to
 
 @pytest.fixture(autouse=True)
 def patch_settings(monkeypatch, tmp_path, fixtures_dir):
-    """Seed local Dataset 37 cache + zero rate limit + reset module-level memo."""
+    """Seed local Dataset 37 cache + zero rate limit and throttle + reset module-level memo."""
     tools_mod._LICENSES_CACHE = None
 
     raw = json.loads((fixtures_dir / "dataset37_sample.json").read_text(encoding="utf-8"))
@@ -33,6 +33,7 @@ def patch_settings(monkeypatch, tmp_path, fixtures_dir):
         DATASET37_CACHE_DIR=cache_dir,
         DATASET37_TTL_HOURS=24,
         FDA_RATE_LIMIT_INTERVAL_SECONDS=0.0,
+        INSERT_THROTTLE_MIN_INTERVAL_SECONDS=0.0,
     )
     monkeypatch.setattr(tools_mod, "get_settings", lambda: overridden)
 
