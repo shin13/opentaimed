@@ -11,6 +11,7 @@ from pydantic import BeforeValidator
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
+from taiwan_fda_mcp import __version__
 from taiwan_fda_mcp.coerce import coerce_json_array
 from taiwan_fda_mcp.config import Settings, get_settings
 from taiwan_fda_mcp.logging_config import configure_logging
@@ -105,6 +106,7 @@ async def _lifespan(_server: FastMCP):
 
 mcp: FastMCP = FastMCP(
     name="taiwan-fda-mcp",
+    version=__version__,
     lifespan=_lifespan,
     instructions=(
         # Chinese fullwidth punctuation is intentional — per-line noqa: RUF001 below.

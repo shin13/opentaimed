@@ -7,6 +7,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+- The lockfile now uses fastmcp 4.1.0, which fresh installs already got.
+  With it, an HTTP client session ends after 30 minutes without requests.
+  Clients must then start a new session. `DEPLOYMENT.md` explains this.
+
+### Fixed
+- The server now reports its own version in `serverInfo`. Before, it reported
+  the fastmcp version.
+
 ## [0.9.0] — 2026-10-13
 
 ### Changed

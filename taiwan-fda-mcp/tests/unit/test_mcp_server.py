@@ -12,6 +12,7 @@ from fastmcp import Client
 
 import taiwan_fda_mcp.mcp_server as srv
 import taiwan_fda_mcp.tools as tools_mod
+from taiwan_fda_mcp import __version__
 from taiwan_fda_mcp.config import Settings
 from taiwan_fda_mcp.mcp_server import get_drug_appearance, mcp
 from taiwan_fda_mcp.sources.opendata.appearance_store import get_appearance_store
@@ -36,6 +37,12 @@ def patch_settings(monkeypatch, tmp_path, fixtures_dir):
         INSERT_THROTTLE_MIN_INTERVAL_SECONDS=0.0,
     )
     monkeypatch.setattr(tools_mod, "get_settings", lambda: overridden)
+
+
+def test_server_info_reports_package_version():
+    """`serverInfo.version` is this package's version, not FastMCP's fallback."""
+    options = mcp._mcp_server.create_initialization_options()
+    assert options.server_version == __version__
 
 
 def test_main_defaults_to_stdio(monkeypatch):

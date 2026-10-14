@@ -93,6 +93,11 @@ call. Do not work around it by turning off verification.
 - TLS for clients ends at Caddy, using the cert and key in `./certs/`.
 - Do not expose the service to the public internet (security invariant #8).
 - Clients connect to `https://<your-host>/mcp/` (keep the trailing slash).
+- A client session ends after 30 minutes without requests (the MCP SDK default,
+  from fastmcp 4.1.0). The next request then gets `404`, and the client must
+  start a new session. Clients that follow the MCP spec do this on their own.
+  If a client shows an error after a long pause instead, check whether it
+  reconnects.
 
 ## Slow links and first start
 
