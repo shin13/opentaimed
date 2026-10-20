@@ -239,6 +239,12 @@ not be silently dropped when a future component is implemented.
 - Custom exceptions inherit from a project base class and carry an
   `RCode` enum value for structured error responses.
 - Logging is JSON-structured with explicit sensitive-field masking.
+- A yes/no field that answers a clinical question is `bool | None`, not `bool`.
+  `false` means "we checked and it is not so". If the lookup failed, return `null`
+  and set `error`. Never return `false` for a failure, or the answer reads as a fact
+  ("not reimbursed", "no such item"). `nhi_listed`, `any_reimbursed`,
+  `item_on_file` and `appearance_on_file` follow this rule. See
+  [`tool_responses.py`](./taiwan-fda-mcp/src/taiwan_fda_mcp/tool_responses.py).
 
 ### Frontend (planned, not yet implemented)
 
