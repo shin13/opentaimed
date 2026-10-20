@@ -96,7 +96,10 @@ async def test_check_insert_updates_returns_recent_activity():
     """Recent-updates feed must be non-empty and carry a per-date histogram."""
     from taiwan_fda_mcp.tools import check_insert_updates
 
-    since = (datetime.now(UTC) - timedelta(days=7)).strftime("%Y-%m-%d")
+    # 3 days, not 7: a 7-day window took ~150 s locally and twice outran the CI
+    # cap (#131). TFDA posts few updates at weekends, so a window under 3 days
+    # can legitimately be empty; 3 days always spans a weekday.
+    since = (datetime.now(UTC) - timedelta(days=3)).strftime("%Y-%m-%d")
     resp = await check_insert_updates(since)
     assert resp.error is None
     assert resp.total >= 1, f"no updates since {since}"
