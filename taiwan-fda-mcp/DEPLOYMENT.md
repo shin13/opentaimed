@@ -106,3 +106,47 @@ healthy. On an empty cache volume the NHI download alone takes about 120 s. On a
 slow or proxied link, raise the healthcheck `start_period` in
 `docker-compose.yml` from 180 s toward 600 s. Keep the `fda-cache` volume so
 later restarts skip the download.
+
+## Rebuilding the image
+
+Both images are pinned by version and digest: the `mcp` base image in
+`Dockerfile` and `caddy` in `docker-compose.yml`. A rebuild gives the same
+result every time, and rolling back means going back to an older commit.
+Dependabot opens a PR when a new version is out.
+
+Rebuild and restart after every change to `uv.lock` or the pins. A new lock
+file does nothing until the image is rebuilt:
+
+```bash
+docker compose build --pull && docker compose up -d
+```
+
+Why this matters for certificates. The app trusts Python's `certifi` list, and
+the container's system store is separate. On 2026-10-26 the old unpinned base
+image still trusted the compromised eMudhra CA chains in its system store,
+while the app (certifi 2026.10.23) already rejected them. The pinned image
+(Debian 13) rejects them in both places.
+
+To check a running container, run this. It tests both stores. Every line must
+say `rejected`. A timeout is not proof:
+
+```bash
+docker compose exec mcp .venv/bin/python -c "
+import ssl, urllib.request, httpx
+def verdict(fetch):
+    try:
+        fetch()
+        return 'TRUSTED (bad)'
+    except Exception as e:
+        return 'rejected' if 'CERTIFICATE_VERIFY' in str(e) else f'other: {e!r}'
+for h in ('dv-g3b-emudhra', 'dv-g3b-aaa-emudhra', 'dv-g3b-noct-emudhra', 'dv-g3b-aaa-noct-emudhra'):
+    url = f'https://{h}.we-have-a-problem.com/'
+    app = verdict(lambda: httpx.get(url, timeout=15))
+    system = verdict(lambda: urllib.request.urlopen(url, timeout=15, context=ssl.create_default_context()))
+    print(f'{h:26s} app (certifi): {app:10s} system store: {system}')
+"
+```
+
+The `app` column is what the server trusts. The `system store` column is the
+container's own CA list. The old unpinned image printed `TRUSTED (bad)` in the
+second column.
