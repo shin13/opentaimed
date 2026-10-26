@@ -1,7 +1,11 @@
 # path: Dockerfile
 # brief: Non-root container for the shared HTTP MCP service (ADR-0010 Model B).
 
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+# Pinned by version tag AND digest, so a rebuild gives the same image. The
+# unversioned `python3.13-bookworm-slim` tag is frozen at uv 0.9.30 (Debian 12,
+# 2023 ca-certificates) and uv no longer publishes bookworm images. Dependabot
+# (docker ecosystem) moves this pin; see DEPLOYMENT.md "Rebuilding the image".
+FROM ghcr.io/astral-sh/uv:0.13.5-python3.13-trixie-slim@sha256:331fbb158258608b9391e802305a9a2c9e42d689435c1d98706647122a122ab0
 
 # Non-root runtime user (security invariant #3).
 RUN useradd --create-home --uid 10001 appuser

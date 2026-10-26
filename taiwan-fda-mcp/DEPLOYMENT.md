@@ -106,3 +106,38 @@ healthy. On an empty cache volume the NHI download alone takes about 120 s. On a
 slow or proxied link, raise the healthcheck `start_period` in
 `docker-compose.yml` from 180 s toward 600 s. Keep the `fda-cache` volume so
 later restarts skip the download.
+
+## Rebuilding the image
+
+Both images are pinned by version and digest: the `mcp` base image in
+`Dockerfile` and `caddy` in `docker-compose.yml`. A rebuild gives the same
+result every time, and rolling back means going back to an older commit.
+Dependabot opens a PR when a new version is out.
+
+Rebuild and restart after every change to `uv.lock` or the pins. A new lock
+file does nothing until the image is rebuilt:
+
+```bash
+docker compose build --pull && docker compose up -d
+```
+
+Why this matters for certificates. The app trusts Python's `certifi` list, and
+the container's system store is separate. On 2026-10-26 the old unpinned base
+image still trusted the compromised eMudhra CA chains in its system store,
+while the app (certifi 2026.10.23) already rejected them. The pinned image
+(Debian 13) rejects them in both places.
+
+To check a running container, all four lines should say `rejected` or fail with
+a certificate error. A timeout is not proof:
+
+```bash
+docker compose exec mcp .venv/bin/python -c "
+import httpx
+for h in ('dv-g3b-emudhra', 'dv-g3b-aaa-emudhra', 'dv-g3b-noct-emudhra', 'dv-g3b-aaa-noct-emudhra'):
+    try:
+        httpx.get(f'https://{h}.we-have-a-problem.com/', timeout=15)
+        print(h, 'TRUSTED (bad)')
+    except Exception as e:
+        print(h, 'rejected' if 'CERTIFICATE_VERIFY' in str(e) else f'other: {e!r}')
+"
+```

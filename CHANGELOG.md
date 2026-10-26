@@ -8,6 +8,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Changed
+- The Docker images are now pinned by version and digest, and Dependabot keeps
+  them current. The `mcp` base image moves to Debian 13 and uv 0.13.5. The old
+  unpinned tag was stuck on uv 0.9.30 and a 2023 CA bundle. Rebuild the image
+  after pulling this: `docker compose build --pull`. `DEPLOYMENT.md` has a
+  check for the eMudhra CA incident.
 - The lockfile now uses fastmcp 4.1.0, which fresh installs already got.
   With it, an HTTP client session ends after 30 minutes without requests.
   Clients must then start a new session. `DEPLOYMENT.md` explains this.

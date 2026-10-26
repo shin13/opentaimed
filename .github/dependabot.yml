@@ -1,11 +1,13 @@
 # Dependabot configuration.
 #
 # NOTE: Dependabot *security* updates run WITHOUT this file (enabled in repo
-# settings) and already land `chore(deps)` CVE-fix PRs. This file adds two
+# settings) and already land `chore(deps)` CVE-fix PRs. This file adds three
 # things on top:
-#   1. routine (non-security) version-bump PRs for the Python runtime deps, and
+#   1. routine (non-security) version-bump PRs for the Python runtime deps,
 #   2. the `github-actions` ecosystem, which keeps the commit-SHA pins in
-#      .github/workflows/ current (SHA + the trailing `# vX.Y.Z` comment).
+#      .github/workflows/ current (SHA + the trailing `# vX.Y.Z` comment), and
+#   3. the `docker` and `docker-compose` ecosystems, which keep the image
+#      version + digest pins in Dockerfile and docker-compose.yml current.
 #
 # Without (2), pinning actions by SHA would silently freeze them at whatever
 # version was pinned — Dependabot is what makes SHA-pinning maintainable.
@@ -47,3 +49,28 @@ updates:
         update-types:
           - "minor"
           - "patch"
+
+  # Container images — keeps the version + digest pins in Dockerfile and
+  # docker-compose.yml fresh. Without this the pins would freeze the base image
+  # (and its CA store) at whatever was pinned.
+  - package-ecosystem: "docker"
+    directory: "/taiwan-fda-mcp"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "20:00"
+      timezone: "Asia/Taipei"
+    commit-message:
+      prefix: "build"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "docker-compose"
+    directory: "/taiwan-fda-mcp"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "20:00"
+      timezone: "Asia/Taipei"
+    commit-message:
+      prefix: "build"
+    open-pull-requests-limit: 5
