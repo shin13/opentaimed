@@ -127,17 +127,26 @@ image still trusted the compromised eMudhra CA chains in its system store,
 while the app (certifi 2026.10.23) already rejected them. The pinned image
 (Debian 13) rejects them in both places.
 
-To check a running container, all four lines should say `rejected` or fail with
-a certificate error. A timeout is not proof:
+To check a running container, run this. It tests both stores. Every line must
+say `rejected`. A timeout is not proof:
 
 ```bash
 docker compose exec mcp .venv/bin/python -c "
-import httpx
-for h in ('dv-g3b-emudhra', 'dv-g3b-aaa-emudhra', 'dv-g3b-noct-emudhra', 'dv-g3b-aaa-noct-emudhra'):
+import ssl, urllib.request, httpx
+def verdict(fetch):
     try:
-        httpx.get(f'https://{h}.we-have-a-problem.com/', timeout=15)
-        print(h, 'TRUSTED (bad)')
+        fetch()
+        return 'TRUSTED (bad)'
     except Exception as e:
-        print(h, 'rejected' if 'CERTIFICATE_VERIFY' in str(e) else f'other: {e!r}')
+        return 'rejected' if 'CERTIFICATE_VERIFY' in str(e) else f'other: {e!r}'
+for h in ('dv-g3b-emudhra', 'dv-g3b-aaa-emudhra', 'dv-g3b-noct-emudhra', 'dv-g3b-aaa-noct-emudhra'):
+    url = f'https://{h}.we-have-a-problem.com/'
+    app = verdict(lambda: httpx.get(url, timeout=15))
+    system = verdict(lambda: urllib.request.urlopen(url, timeout=15, context=ssl.create_default_context()))
+    print(f'{h:26s} app (certifi): {app:10s} system store: {system}')
 "
 ```
+
+The `app` column is what the server trusts. The `system store` column is the
+container's own CA list. The old unpinned image printed `TRUSTED (bad)` in the
+second column.
