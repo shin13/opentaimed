@@ -293,7 +293,7 @@ Current:
 - `.github/workflows/smoke.yml` — daily live TFDA smoke test
   (`-m "smoke and not nhi"`, 18:00 UTC = 02:00 Taipei), to catch contract
   drift within hours. A separate `alert` job dedup-files a `smoke-failure`
-  issue on failure.
+  issue on failure, and a `resolve` job closes it on the next green run.
 - **The NHI smoke test is not in CI.** NHI resets connections from many GitHub
   runners, but not all, while it answers from Taiwan (#113). A CI result would
   mostly tell you which runner you got. So it is run by hand from
