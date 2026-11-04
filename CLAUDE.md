@@ -329,8 +329,8 @@ Current:
   notes. The runbook is [`RELEASING.md`](./RELEASING.md); do not create the
   Release by hand.
 - Every workflow defaults to `permissions: contents: read` (least-privilege).
-  Three jobs elevate, each in its own job so the scope cannot leak into a
-  neighbour: the `smoke`/`audit` `alert` jobs take `issues: write`, and
+  Five jobs elevate, each in its own job so the scope cannot leak into a
+  neighbour: the `smoke`/`audit` `alert` and `resolve` jobs take `issues: write`, and
   `publish.yml`'s `release` job takes `contents: write` — deliberately kept out
   of the `publish` job, which holds the `id-token: write` OIDC identity that
   Trusted Publishing exchanges for a PyPI upload credential. All use the native
