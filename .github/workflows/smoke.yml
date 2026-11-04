@@ -7,8 +7,8 @@ name: smoke
 # The NHI smoke test (`-m "smoke and nhi"`) is NOT run here. NHI resets
 # connections from many GitHub runners, but not all, while it answers from
 # Taiwan (#113). So it is run by hand from Taiwan instead. See CLAUDE.md "CI/CD".
-# The `tfda` job reads code and calls the public APIs. Only the `alert` job may
-# write issues.
+# The `tfda` job reads code and calls the public APIs. Only the `alert` and
+# `resolve` jobs may write issues.
 
 on:
   schedule:
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
           cache-dependency-glob: taiwan-fda-mcp/uv.lock
@@ -101,3 +101,34 @@ jobs:
           else
             gh issue create -R "$REPO" --label "$LABEL" --title "$TITLE" --body "$BODY"$'\n\n'"Run: $RUN_URL"
           fi
+
+  resolve:
+    name: close resolved issue
+    needs: tfda
+    if: success()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Close any open smoke-failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          LABEL: smoke-failure
+        run: |
+          set -euo pipefail
+          # Without this, a green run leaves the issue open forever: `alert`
+          # only files or comments, so #131 stayed open through ten green runs.
+          open=$(gh issue list -R "$REPO" --label "$LABEL" --state open --json number -q '.[].number' || true)
+          if [ -z "$open" ]; then
+            echo "No open $LABEL issue to close."
+            exit 0
+          fi
+          for number in $open; do
+            echo "Closing #$number"
+            gh issue close "$number" -R "$REPO" --reason completed \
+              --comment "The smoke test is green again as of $(date -u +%Y-%m-%d), so this issue is closed automatically. It will reopen as a new issue if the test fails again. Run: $RUN_URL"
+          done
