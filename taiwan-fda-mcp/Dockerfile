@@ -5,7 +5,7 @@
 # unversioned `python3.13-bookworm-slim` tag is frozen at uv 0.9.30 (Debian 12,
 # 2023 ca-certificates) and uv no longer publishes bookworm images. Dependabot
 # (docker ecosystem) moves this pin; see DEPLOYMENT.md "Rebuilding the image".
-FROM ghcr.io/astral-sh/uv:0.13.6-python3.13-trixie-slim@sha256:e586c1c65b7071aec78f02c5587c76c5011159cd76b3d6f1255f40e48e850abc
+FROM ghcr.io/astral-sh/uv:0.13.7-python3.13-trixie-slim@sha256:6ff812e34a0e14b4b8bc9ddf25e77b3e16bac6e0c4d9b67641f40366fa382d4c
 
 # Non-root runtime user (security invariant #3).
 RUN useradd --create-home --uid 10001 appuser
