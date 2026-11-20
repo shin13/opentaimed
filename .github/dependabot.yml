@@ -11,15 +11,19 @@
 #
 # Without (2), pinning actions by SHA would silently freeze them at whatever
 # version was pinned — Dependabot is what makes SHA-pinning maintainable.
+#
+# Routine updates run monthly, not weekly. Weekly gave 3 to 5 PRs a week, and
+# each image bump also needs a rebuild on the deploy host. Monthly batches them
+# into one review and one rebuild. Security updates do not follow this
+# schedule: they still open as soon as a CVE is published.
 version: 2
 updates:
-  # Python runtime deps (uv). Minor + patch are grouped into one weekly PR to
+  # Python runtime deps (uv). Minor + patch are grouped into one monthly PR to
   # keep volume low; majors come as individual PRs for deliberate review.
   - package-ecosystem: "uv"
     directory: "/taiwan-fda-mcp"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "20:00"
       timezone: "Asia/Taipei"
     commit-message:
@@ -37,8 +41,7 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "20:00"
       timezone: "Asia/Taipei"
     commit-message:
@@ -56,8 +59,7 @@ updates:
   - package-ecosystem: "docker"
     directory: "/taiwan-fda-mcp"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "20:00"
       timezone: "Asia/Taipei"
     commit-message:
@@ -67,8 +69,7 @@ updates:
   - package-ecosystem: "docker-compose"
     directory: "/taiwan-fda-mcp"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "20:00"
       timezone: "Asia/Taipei"
     commit-message:
