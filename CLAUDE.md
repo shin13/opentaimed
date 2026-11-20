@@ -349,12 +349,15 @@ Current:
   `grep -rhoE "uses: [^ ]+ # .*" .github/workflows/ | sort -u`.
   To repin, resolve a tag to its commit SHA with
   `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`.
-- `.github/dependabot.yml` — routine weekly version-update PRs for the `uv`
-  Python deps (minor/patch grouped, `chore(deps)` prefix) and the
-  `github-actions` ecosystem (`ci` prefix), the latter keeping the commit-SHA
-  action pins current — without it, SHA-pinning would silently freeze the
-  actions. Dependabot *security* updates run independently (repo setting, no
-  config) and already land `chore(deps)` CVE-fix PRs.
+- `.github/dependabot.yml` — routine **monthly** version-update PRs for the
+  `uv` Python deps (minor/patch grouped, `chore(deps)` prefix), the
+  `github-actions` ecosystem (`ci` prefix), and the `docker` and
+  `docker-compose` image pins (`build` prefix). The actions and image entries
+  keep the SHA and digest pins current. Without them, pinning would silently
+  freeze those versions. Monthly keeps it to one batch of PRs and one deploy
+  rebuild a month. Dependabot *security* updates run independently (repo
+  setting, no config), ignore this schedule, and still land `chore(deps)`
+  CVE-fix PRs right away.
 
 Branch protection: a repository ruleset enforces PR-only updates to
 `main` (no direct push, no force-push, no deletion) with required
