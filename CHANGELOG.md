@@ -17,7 +17,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   With it, an HTTP client session ends after 30 minutes without requests.
   Clients must then start a new session. `DEPLOYMENT.md` explains this.
 - CI: Dependabot version updates now run monthly instead of weekly. Security
-  updates still open right away.
+  updates still open when a Dependabot alert is raised.
 
 ### Fixed
 - The server now reports its own version in `serverInfo`. Before, it reported

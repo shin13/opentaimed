@@ -355,9 +355,10 @@ Current:
   `docker-compose` image pins (`build` prefix). The actions and image entries
   keep the SHA and digest pins current. Without them, pinning would silently
   freeze those versions. Monthly keeps it to one batch of PRs and one deploy
-  rebuild a month. Dependabot *security* updates run independently (repo
-  setting, no config), ignore this schedule, and still land `chore(deps)`
-  CVE-fix PRs right away.
+  rebuild a month. Dependabot *security* updates are a repo setting. They
+  ignore this schedule and open a PR when a Dependabot alert is raised. They
+  do take the `commit-message` of the entry for their ecosystem, so Python
+  CVE-fix PRs carry the `chore(deps)` prefix.
 
 Branch protection: a repository ruleset enforces PR-only updates to
 `main` (no direct push, no force-push, no deletion) with required

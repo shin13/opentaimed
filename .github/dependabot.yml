@@ -1,8 +1,10 @@
 # Dependabot configuration.
 #
-# NOTE: Dependabot *security* updates run WITHOUT this file (enabled in repo
-# settings) and already land `chore(deps)` CVE-fix PRs. This file adds three
-# things on top:
+# NOTE: Dependabot *security* updates are turned on in the repo settings, not
+# here. They open a PR when a Dependabot alert is raised. They ignore
+# `schedule` below. They do use the `commit-message` of the entry for their
+# ecosystem, which is why Python CVE-fix PRs carry the `chore(deps)` prefix.
+# This file adds three things on top:
 #   1. routine (non-security) version-bump PRs for the Python runtime deps,
 #   2. the `github-actions` ecosystem, which keeps the commit-SHA pins in
 #      .github/workflows/ current (SHA + the trailing `# vX.Y.Z` comment), and
@@ -14,12 +16,12 @@
 #
 # Routine updates run monthly, not weekly. Weekly gave 3 to 5 PRs a week, and
 # each image bump also needs a rebuild on the deploy host. Monthly batches them
-# into one review and one rebuild. Security updates do not follow this
-# schedule: they still open as soon as a CVE is published.
+# into one batch of PRs and one rebuild. Security updates do not follow this
+# schedule. They still open when a Dependabot alert is raised.
 version: 2
 updates:
   # Python runtime deps (uv). Minor + patch are grouped into one monthly PR to
-  # keep volume low; majors come as individual PRs for deliberate review.
+  # keep volume low. Majors come as individual PRs for deliberate review.
   - package-ecosystem: "uv"
     directory: "/taiwan-fda-mcp"
     schedule:
