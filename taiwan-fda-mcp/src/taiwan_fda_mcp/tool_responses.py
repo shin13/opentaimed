@@ -459,7 +459,7 @@ class BatchError(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    window: list[str] = Field(description="[start_iso, end_iso] of the 10-day batch that failed.")
+    window: list[str] = Field(description="[start_iso, end_iso] of the batch that failed.")
     code: str = Field(description="RCode name.")
     message: str
 

@@ -14,7 +14,7 @@
             "type": "string"
           },
           "window": {
-            "description": "[start_iso, end_iso] of the 10-day batch that failed.",
+            "description": "[start_iso, end_iso] of the batch that failed.",
             "items": {
               "type": "string"
             },

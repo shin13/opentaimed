@@ -499,8 +499,8 @@ async def check_insert_updates(
         `updates`), `truncated` (true iff capped at `limit`), `by_date` (histogram newest-first
         over ALL updates), `updates` (sorted by last_update_date desc, capped at `limit`),
         `batch_errors` (per-window failures from the underlying API — surfaced not swallowed),
-        and `error: null`. The GetDrugDoc API caps each request at a 10-day window — this tool
-        batches automatically; a single FDA outage in one batch does not lose the rest.
+        and `error: null`. This tool queries the FDA one day at a time; a failed day is listed in
+        `batch_errors` and does not lose the other days.
     """
     return await _check_insert_updates(
         since_date=since_date, license_list=license_list, limit=limit

@@ -383,8 +383,11 @@ async def test_check_insert_updates_batches_date_ranges(seeded_settings, fixture
                 settings=seeded_settings,
             )
         ).model_dump()
-    # 29-day span → 3 batches of ≤10 days
-    assert route.call_count == 3  # noqa: PLR2004
+    # 29-day span → 29 one-day calls, each with startdate == enddate.
+    assert route.call_count == 29  # noqa: PLR2004
+    for call in route.calls:
+        params = call.request.url.params
+        assert params["startdate"] == params["enddate"]
     assert results["error"] is None
     assert results["since_date"] == "2025-10-01"
     assert results["today"] == "2025-10-29"
@@ -393,6 +396,32 @@ async def test_check_insert_updates_batches_date_ranges(seeded_settings, fixture
     # by_date is keyed by date string, values are counts.
     assert sum(results["by_date"].values()) == results["total"]
     assert results["batch_errors"] == []
+
+
+@pytest.mark.asyncio
+async def test_check_insert_updates_failed_day_is_surfaced_and_others_kept(
+    seeded_settings, fixtures_dir
+):
+    """One failed day lands in `batch_errors` as that day alone; the other days still return."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+
+    def _respond(request: httpx.Request) -> httpx.Response:
+        # 404 is terminal (no retry), so the test needs no backoff sleeps.
+        if request.url.params["startdate"] == "2025/10/28":
+            return httpx.Response(404)
+        return httpx.Response(200, content=xml)
+
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(side_effect=_respond)
+        results = (
+            await check_insert_updates(
+                since_date="2025-10-27", today="2025-10-29", settings=seeded_settings
+            )
+        ).model_dump()
+    assert results["error"] is None
+    assert [e["window"] for e in results["batch_errors"]] == [["2025-10-28", "2025-10-28"]]
+    assert results["batch_errors"][0]["code"] == "INSERT_FETCH_FAILED"
+    assert results["total"] >= 1  # 10-27 and 10-29 still returned
 
 
 @pytest.mark.asyncio

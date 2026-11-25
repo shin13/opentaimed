@@ -18,6 +18,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   Clients must then start a new session. `DEPLOYMENT.md` explains this.
 - CI: Dependabot version updates now run monthly instead of weekly. Security
   updates still open when a Dependabot alert is raised.
+- `check_insert_updates` now asks TFDA for one day at a time instead of ten.
+  One weekday can be 20–70 MB, mostly attached images. A failed day now costs
+  one day's retry, and `batch_errors` lists the exact day. Empty days take
+  about 0.1 s.
+- CI: the daily smoke test now checks one day of insert updates, walking back
+  from today, instead of a 3-day window that reached 115 MB (#168).
 
 ### Fixed
 - The server now reports its own version in `serverInfo`. Before, it reported

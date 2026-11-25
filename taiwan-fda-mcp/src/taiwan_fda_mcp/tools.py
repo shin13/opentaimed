@@ -834,6 +834,12 @@ def _error_response(license_no: str, code: RCode, message: str) -> GetPackageIns
     )
 
 
+# One GetDrugDoc call per day, although the API allows 10. One weekday is 20-70 MB,
+# mostly attached images (measured 2026-11-24), so a 10-day call can reach hundreds
+# of MB. Per-day calls keep a failure and its retry to one day; empty days cost ~0.1 s.
+_INSERT_UPDATES_WINDOW_DAYS = 1
+
+
 async def check_insert_updates(
     since_date: str,
     *,
@@ -844,9 +850,9 @@ async def check_insert_updates(
 ) -> CheckInsertUpdatesResponse:
     """Find inserts updated between `since_date` and `today` (inclusive).
 
-    The GetDrugDoc API caps each call at a 10-day window — this function
-    batches automatically. Per-batch failures are SURFACED in `batch_errors`
-    rather than silently dropping the failed window's data.
+    Sends one GetDrugDoc call per day (`_INSERT_UPDATES_WINDOW_DAYS`). A failed
+    day is SURFACED in `batch_errors` rather than silently dropped, and the
+    other days still return.
 
     `updates` is capped at `limit` (default 200, newest-first) to bound the
     response size; `total`, `returned`, `truncated`, and `by_date` let the
@@ -877,7 +883,7 @@ async def check_insert_updates(
 
     window_start = start
     while window_start <= end:
-        window_end = min(window_start + timedelta(days=9), end)
+        window_end = min(window_start + timedelta(days=_INSERT_UPDATES_WINDOW_DAYS - 1), end)
         try:
             inserts = await fetch_drug_insert(
                 base_url=s.FDA_INSERT_BASE_URL,

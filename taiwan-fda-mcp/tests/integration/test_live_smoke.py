@@ -17,7 +17,8 @@ Each case below was live-verified on 2026-06-02; the exact license numbers
 are pinned so a regression points at a specific, reproducible drug.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -93,17 +94,25 @@ async def test_panadol_designated_otc_routes_to_otc_format():
 
 
 async def test_check_insert_updates_returns_recent_activity():
-    """Recent-updates feed must be non-empty and carry a per-date histogram."""
+    """The newest day with insert updates must be found and carry a per-date histogram.
+
+    Asks one day at a time, walking back from today in Taipei time (TFDA's dates).
+    A weekday is 20-70 MB, but an empty weekend day costs ~0.1 s, so this downloads
+    one day's data, not a multi-day window. A 3-day window reached 115 MB and failed
+    on CI (#168). 10 days covers the longest holiday (Lunar New Year).
+    """
     from taiwan_fda_mcp.tools import check_insert_updates
 
-    # 3 days, not 7: a 7-day window took ~150 s locally and twice outran the CI
-    # cap (#131). TFDA posts few updates at weekends, so a window under 3 days
-    # can legitimately be empty; 3 days always spans a weekday.
-    since = (datetime.now(UTC) - timedelta(days=3)).strftime("%Y-%m-%d")
-    resp = await check_insert_updates(since)
-    assert resp.error is None
-    assert resp.total >= 1, f"no updates since {since}"
-    assert resp.by_date, "by_date histogram empty"
+    day = datetime.now(ZoneInfo("Asia/Taipei")).date()
+    for _ in range(10):
+        resp = await check_insert_updates(day.isoformat(), today=day.isoformat())
+        assert resp.error is None
+        assert resp.batch_errors == [], f"{day}: {resp.batch_errors}"
+        if resp.total >= 1:
+            assert resp.by_date, "by_date histogram empty"
+            return
+        day -= timedelta(days=1)
+    pytest.fail(f"no insert updates in the 10 days up to {day + timedelta(days=10)}")
 
 
 @pytest.mark.parametrize(
