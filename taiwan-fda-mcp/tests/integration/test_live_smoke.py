@@ -97,14 +97,16 @@ async def test_check_insert_updates_returns_recent_activity():
     """The newest day with insert updates must be found and carry a per-date histogram.
 
     Asks one day at a time, walking back from today in Taipei time (TFDA's dates).
-    A weekday is 20-70 MB, but an empty weekend day costs ~0.1 s, so this downloads
-    one day's data, not a multi-day window. A 3-day window reached 115 MB and failed
-    on CI (#168). 10 days covers the longest holiday (Lunar New Year).
+    A weekday is 20-70 MB, but an empty day costs about 0.5 s, so this downloads one
+    day's data, not a multi-day window. A 3-day window reached 115 MB and failed on
+    CI (#168). 14 days covers a 9-day Lunar New Year break plus today, which is
+    usually still empty when the 02:00 cron runs.
     """
     from taiwan_fda_mcp.tools import check_insert_updates
 
+    days_back = 14
     day = datetime.now(ZoneInfo("Asia/Taipei")).date()
-    for _ in range(10):
+    for _ in range(days_back):
         resp = await check_insert_updates(day.isoformat(), today=day.isoformat())
         assert resp.error is None
         assert resp.batch_errors == [], f"{day}: {resp.batch_errors}"
@@ -112,7 +114,9 @@ async def test_check_insert_updates_returns_recent_activity():
             assert resp.by_date, "by_date histogram empty"
             return
         day -= timedelta(days=1)
-    pytest.fail(f"no insert updates in the 10 days up to {day + timedelta(days=10)}")
+    pytest.fail(
+        f"no insert updates in the {days_back} days up to {day + timedelta(days=days_back)}"
+    )
 
 
 @pytest.mark.parametrize(

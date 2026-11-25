@@ -498,9 +498,10 @@ async def check_insert_updates(
         Dict with `total` (unique inserts updated — full count), `returned` (entries in
         `updates`), `truncated` (true iff capped at `limit`), `by_date` (histogram newest-first
         over ALL updates), `updates` (sorted by last_update_date desc, capped at `limit`),
-        `batch_errors` (per-window failures from the underlying API — surfaced not swallowed),
+        `batch_errors` (per-day failures from the underlying API — surfaced not swallowed),
         and `error: null`. This tool queries the FDA one day at a time; a failed day is listed in
-        `batch_errors` and does not lose the other days.
+        `batch_errors` and does not lose the other days. Each day is a separate FDA request:
+        an empty day takes about 0.5 s, a weekday can take 20-120 s. Prefer a recent since_date.
     """
     return await _check_insert_updates(
         since_date=since_date, license_list=license_list, limit=limit

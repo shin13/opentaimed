@@ -836,7 +836,8 @@ def _error_response(license_no: str, code: RCode, message: str) -> GetPackageIns
 
 # One GetDrugDoc call per day, although the API allows 10. One weekday is 20-70 MB,
 # mostly attached images (measured 2026-11-24), so a 10-day call can reach hundreds
-# of MB. Per-day calls keep a failure and its retry to one day; empty days cost ~0.1 s.
+# of MB. Per-day calls keep a failure and its retry to one day. An empty day still
+# costs ~0.5 s, the default rate-limit sleep after each call.
 _INSERT_UPDATES_WINDOW_DAYS = 1
 
 
@@ -878,7 +879,9 @@ async def check_insert_updates(
         )
 
     filter_set = set(license_list) if license_list else None
-    seen: dict[str, DrugInsert] = {}
+    # Keep only the summary row, not the parsed insert: a weekday's inserts hold
+    # ~24 MB of section text and inline images (measured), which would pile up per day.
+    seen: dict[str, UpdateEntry] = {}
     batch_errors: list[BatchError] = []
 
     window_start = start
@@ -913,21 +916,15 @@ async def check_insert_updates(
         for ins in inserts:
             if filter_set is not None and ins.license_no not in filter_set:
                 continue
-            seen[ins.license_no] = ins
-        window_start = window_end + timedelta(days=1)
-
-    updates = sorted(
-        (
-            UpdateEntry(
+            seen[ins.license_no] = UpdateEntry(
                 license_no=ins.license_no,
                 name_zh=ins.name_zh,
                 last_update_date=ins.update_date,
             )
-            for ins in seen.values()
-        ),
-        key=lambda u: u.last_update_date or "",
-        reverse=True,
-    )
+        del inserts  # free this day's parsed inserts before the next download
+        window_start = window_end + timedelta(days=1)
+
+    updates = sorted(seen.values(), key=lambda u: u.last_update_date or "", reverse=True)
     by_date_counter = Counter(u.last_update_date for u in updates if u.last_update_date)
     by_date = dict(sorted(by_date_counter.items(), key=lambda kv: kv[0], reverse=True))
 
