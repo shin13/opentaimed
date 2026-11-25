@@ -7,7 +7,7 @@ import difflib
 import logging
 import time
 from collections import Counter
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Literal
 from urllib.parse import quote, urlparse
 
@@ -834,6 +834,26 @@ def _error_response(license_no: str, code: RCode, message: str) -> GetPackageIns
     )
 
 
+# One GetDrugDoc call per day, although the API allows 10. One weekday is 20-70 MB,
+# mostly attached images (measured 2026-11-24), so a 10-day call can reach hundreds
+# of MB. Per-day calls keep a failure and its retry to one day. An empty day still
+# costs ~0.5 s, the default rate-limit sleep after each call.
+_INSERT_UPDATES_WINDOW_DAYS = 1
+
+# Widest range one call may ask for. Each day is one request, so 31 days is up to
+# ~22 weekday downloads; wider ranges would run for an hour or more.
+INSERT_UPDATES_MAX_DAYS = 31
+
+# TFDA dates are Taiwan dates. A fixed UTC+8 offset is exact (no DST since 1979)
+# and, unlike ZoneInfo, does not need tzdata in the slim Docker image.
+_TAIPEI_TZ = timezone(timedelta(hours=8), "Asia/Taipei")
+
+
+def taipei_today() -> date:
+    """Return today's date in Taiwan, the calendar TFDA dates its inserts in."""
+    return datetime.now(_TAIPEI_TZ).date()
+
+
 async def check_insert_updates(
     since_date: str,
     *,
@@ -844,9 +864,14 @@ async def check_insert_updates(
 ) -> CheckInsertUpdatesResponse:
     """Find inserts updated between `since_date` and `today` (inclusive).
 
-    The GetDrugDoc API caps each call at a 10-day window — this function
-    batches automatically. Per-batch failures are SURFACED in `batch_errors`
-    rather than silently dropping the failed window's data.
+    `today` defaults to the Taiwan date. Sends one GetDrugDoc call per day
+    (`_INSERT_UPDATES_WINDOW_DAYS`). A failed day is SURFACED in `batch_errors`
+    rather than silently dropped, and the other days still return.
+
+    Returns an `INVALID_DATE` error, never an empty success, when a date does
+    not parse or `since_date` is after `today`, and `DATE_RANGE_TOO_WIDE` when
+    the range spans more than `INSERT_UPDATES_MAX_DAYS` days. An empty success
+    would read as "no inserts were updated" although nothing was checked.
 
     `updates` is capped at `limit` (default 200, newest-first) to bound the
     response size; `total`, `returned`, `truncated`, and `by_date` let the
@@ -856,28 +881,48 @@ async def check_insert_updates(
     s = settings or get_settings()
     try:
         start = date.fromisoformat(since_date)
+        end = date.fromisoformat(today) if today else taipei_today()
     except ValueError as exc:
         return CheckInsertUpdatesResponse(
             since_date=since_date,
             today=today,
             error=ErrorInfo(code="INVALID_DATE", message=str(exc)),
         )
-    end = date.fromisoformat(today) if today else datetime.now(UTC).date()
 
     if end < start:
         return CheckInsertUpdatesResponse(
             since_date=start.isoformat(),
             today=end.isoformat(),
-            error=None,
+            error=ErrorInfo(
+                code="INVALID_DATE",
+                message=f"since_date {start} is after today {end} (Taiwan date).",
+            ),
+        )
+    span_days = (end - start).days + 1
+    if span_days > INSERT_UPDATES_MAX_DAYS:
+        earliest = end - timedelta(days=INSERT_UPDATES_MAX_DAYS - 1)
+        return CheckInsertUpdatesResponse(
+            since_date=start.isoformat(),
+            today=end.isoformat(),
+            error=ErrorInfo(
+                code="DATE_RANGE_TOO_WIDE",
+                message=(
+                    f"The range {start} to {end} is {span_days} days. The maximum is "
+                    f"{INSERT_UPDATES_MAX_DAYS} days, because each day is a separate FDA "
+                    f"request. Use a since_date of {earliest} or later."
+                ),
+            ),
         )
 
     filter_set = set(license_list) if license_list else None
-    seen: dict[str, DrugInsert] = {}
+    # Keep only the summary row, not the parsed insert: a weekday's inserts hold
+    # ~24 MB of section text and inline images (measured), which would pile up per day.
+    seen: dict[str, UpdateEntry] = {}
     batch_errors: list[BatchError] = []
 
     window_start = start
     while window_start <= end:
-        window_end = min(window_start + timedelta(days=9), end)
+        window_end = min(window_start + timedelta(days=_INSERT_UPDATES_WINDOW_DAYS - 1), end)
         try:
             inserts = await fetch_drug_insert(
                 base_url=s.FDA_INSERT_BASE_URL,
@@ -907,21 +952,15 @@ async def check_insert_updates(
         for ins in inserts:
             if filter_set is not None and ins.license_no not in filter_set:
                 continue
-            seen[ins.license_no] = ins
-        window_start = window_end + timedelta(days=1)
-
-    updates = sorted(
-        (
-            UpdateEntry(
+            seen[ins.license_no] = UpdateEntry(
                 license_no=ins.license_no,
                 name_zh=ins.name_zh,
                 last_update_date=ins.update_date,
             )
-            for ins in seen.values()
-        ),
-        key=lambda u: u.last_update_date or "",
-        reverse=True,
-    )
+        del inserts  # free this day's parsed inserts before the next download
+        window_start = window_end + timedelta(days=1)
+
+    updates = sorted(seen.values(), key=lambda u: u.last_update_date or "", reverse=True)
     by_date_counter = Counter(u.last_update_date for u in updates if u.last_update_date)
     by_date = dict(sorted(by_date_counter.items(), key=lambda kv: kv[0], reverse=True))
 

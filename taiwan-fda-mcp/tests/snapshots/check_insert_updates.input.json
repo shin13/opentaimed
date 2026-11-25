@@ -22,7 +22,7 @@
       "type": "integer"
     },
     "since_date": {
-      "description": "'YYYY-MM-DD' — lower bound (inclusive).",
+      "description": "'YYYY-MM-DD' — lower bound (inclusive), a Taiwan date. The range runs to\ntoday's Taiwan date and may span at most 31 days; a wider range returns error\n`DATE_RANGE_TOO_WIDE`, and a future date returns `INVALID_DATE`. Each day is one\nFDA request (about 0.5 s if empty, 20-120 s on a weekday), so prefer a recent date.",
       "type": "string"
     }
   },

@@ -13,7 +13,7 @@ redirected to another host when checked.
 
 | Host | Agency | Used for | Size / timing |
 |---|---|---|---|
-| `mcp.fda.gov.tw` | TFDA 食藥署 | 仿單 text (`get_package_insert`, `check_insert_updates`) | Small, per query |
+| `mcp.fda.gov.tw` | TFDA 食藥署 | 仿單 text (`get_package_insert`, `check_insert_updates`) | One insert is usually under 1 MB, but one with scanned pages reached 32 MB. `check_insert_updates` makes one request per day: 20–70 MB and 20–120 s per weekday (2026-11) |
 | `data.fda.gov.tw` | TFDA 食藥署 | Dataset 37 (licences) and 42 (appearance) | Downloaded daily, cached |
 | `info.nhi.gov.tw` | NHI 健保署 | 健保用藥品項 (`get_nhi_drug_item`, `list_nhi_drug_items`) | 92 MB, over 120 s, updated monthly |
 

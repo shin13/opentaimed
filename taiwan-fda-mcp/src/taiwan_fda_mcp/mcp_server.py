@@ -487,7 +487,10 @@ async def check_insert_updates(
     """List Taiwan FDA drug inserts that were updated on or after the given date.
 
     Args:
-        since_date: 'YYYY-MM-DD' — lower bound (inclusive).
+        since_date: 'YYYY-MM-DD' — lower bound (inclusive), a Taiwan date. The range runs to
+            today's Taiwan date and may span at most 31 days; a wider range returns error
+            `DATE_RANGE_TOO_WIDE`, and a future date returns `INVALID_DATE`. Each day is one
+            FDA request (about 0.5 s if empty, 20-120 s on a weekday), so prefer a recent date.
         license_list: optional. If provided, only inserts whose license_no is in this list are returned.
         limit: max entries in `updates` (default 200, newest-first). `total`/`by_date` still
             reflect every update; `truncated` is true when the list was capped. A wide date
@@ -498,9 +501,10 @@ async def check_insert_updates(
         Dict with `total` (unique inserts updated — full count), `returned` (entries in
         `updates`), `truncated` (true iff capped at `limit`), `by_date` (histogram newest-first
         over ALL updates), `updates` (sorted by last_update_date desc, capped at `limit`),
-        `batch_errors` (per-window failures from the underlying API — surfaced not swallowed),
-        and `error: null`. The GetDrugDoc API caps each request at a 10-day window — this tool
-        batches automatically; a single FDA outage in one batch does not lose the rest.
+        `batch_errors` (per-day failures from the underlying API — surfaced not swallowed),
+        and `error: null`. This tool queries the FDA one day at a time; a failed day is listed in
+        `batch_errors` and does not lose the other days. On a bad date or a range over 31
+        days, `error` is set and no request is made — report it, never read it as "no updates".
     """
     return await _check_insert_updates(
         since_date=since_date, license_list=license_list, limit=limit

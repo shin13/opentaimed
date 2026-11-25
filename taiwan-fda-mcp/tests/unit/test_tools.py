@@ -5,7 +5,7 @@ import asyncio
 import json
 import os
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -383,8 +383,11 @@ async def test_check_insert_updates_batches_date_ranges(seeded_settings, fixture
                 settings=seeded_settings,
             )
         ).model_dump()
-    # 29-day span → 3 batches of ≤10 days
-    assert route.call_count == 3  # noqa: PLR2004
+    # 29-day span → one call per day, every day once, in order, startdate == enddate.
+    starts = [c.request.url.params["startdate"] for c in route.calls]
+    ends = [c.request.url.params["enddate"] for c in route.calls]
+    assert starts == [f"2025/10/{d:02d}" for d in range(1, 30)]
+    assert ends == starts
     assert results["error"] is None
     assert results["since_date"] == "2025-10-01"
     assert results["today"] == "2025-10-29"
@@ -393,6 +396,105 @@ async def test_check_insert_updates_batches_date_ranges(seeded_settings, fixture
     # by_date is keyed by date string, values are counts.
     assert sum(results["by_date"].values()) == results["total"]
     assert results["batch_errors"] == []
+
+
+@pytest.mark.asyncio
+async def test_check_insert_updates_failed_day_is_surfaced_and_others_kept(
+    seeded_settings, fixtures_dir
+):
+    """One failed day lands in `batch_errors` as that day alone; the other days still return."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+
+    def _respond(request: httpx.Request) -> httpx.Response:
+        # 404 is terminal (no retry), so the test needs no backoff sleeps.
+        startdate = request.url.params["startdate"]
+        if startdate == "2025/10/28":
+            return httpx.Response(404)
+        # A distinct license per day, so de-duplication cannot hide a lost day.
+        day = startdate.replace("/", "-")
+        body = xml.decode().replace("衛署藥輸字第021571號", f"TEST-{day}", 1)
+        body = body.replace("<VDATE>2025-10-29</VDATE>", f"<VDATE>{day}</VDATE>", 1)
+        return httpx.Response(200, content=body.encode())
+
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        router.get("/Serv/Query.asmx/GetDrugDoc").mock(side_effect=_respond)
+        results = (
+            await check_insert_updates(
+                since_date="2025-10-27", today="2025-10-29", settings=seeded_settings
+            )
+        ).model_dump()
+    assert results["error"] is None
+    assert [e["window"] for e in results["batch_errors"]] == [["2025-10-28", "2025-10-28"]]
+    assert results["batch_errors"][0]["code"] == "INSERT_FETCH_FAILED"
+    # The days before and after the failed one are both kept.
+    assert sorted(u["license_no"] for u in results["updates"]) == [
+        "TEST-2025-10-27",
+        "TEST-2025-10-29",
+    ]
+    assert results["by_date"] == {"2025-10-29": 1, "2025-10-27": 1}
+
+
+class _FrozenDatetime(datetime):
+    """`datetime` whose now() is 2026-11-24 17:30 UTC = 2026-11-25 01:30 in Taiwan."""
+
+    @classmethod
+    def now(cls, tz=None):  # type: ignore[override]
+        frozen = datetime(2026, 11, 24, 17, 30, tzinfo=UTC)
+        return frozen.astimezone(tz) if tz else frozen.replace(tzinfo=None)
+
+
+@pytest.mark.asyncio
+async def test_check_insert_updates_default_today_is_taiwan_date(
+    seeded_settings, fixtures_dir, monkeypatch
+):
+    """Between 00:00 and 08:00 Taiwan time the UTC date is still yesterday; use Taiwan's."""
+    monkeypatch.setattr(_tools_mod, "datetime", _FrozenDatetime)
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        route = router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = await check_insert_updates("2026-11-25", settings=seeded_settings)
+    assert result.error is None
+    assert result.today == "2026-11-25"
+    assert [c.request.url.params["startdate"] for c in route.calls] == ["2026/11/25"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("since_date", "today", "code"),
+    [
+        ("2025-10-30", "2025-10-29", "INVALID_DATE"),  # since_date after today
+        ("2025-10-29", "not-a-date", "INVALID_DATE"),  # today does not parse
+        ("2025-09-28", "2025-10-29", "DATE_RANGE_TOO_WIDE"),  # 32 days
+    ],
+)
+async def test_check_insert_updates_rejects_bad_ranges_without_requests(
+    seeded_settings, since_date, today, code
+):
+    """A bad range is an error, never an empty success, and sends no FDA request."""
+    async with respx.mock(base_url="https://mcp.fda.gov.tw", assert_all_called=False) as router:
+        route = router.get("/Serv/Query.asmx/GetDrugDoc").mock(return_value=httpx.Response(500))
+        result = await check_insert_updates(since_date, today=today, settings=seeded_settings)
+    assert result.error is not None
+    assert result.error.code == code
+    assert result.total == 0
+    assert route.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_check_insert_updates_allows_exactly_max_days(seeded_settings, fixtures_dir):
+    """The cap is inclusive: a 31-day range runs, one call per day."""
+    xml = (fixtures_dir / "getdrugdoc_sample.xml").read_bytes()
+    async with respx.mock(base_url="https://mcp.fda.gov.tw") as router:
+        route = router.get("/Serv/Query.asmx/GetDrugDoc").mock(
+            return_value=httpx.Response(200, content=xml)
+        )
+        result = await check_insert_updates(
+            "2025-09-29", today="2025-10-29", settings=seeded_settings
+        )
+    assert result.error is None
+    assert route.call_count == _tools_mod.INSERT_UPDATES_MAX_DAYS == 31  # noqa: PLR2004
 
 
 @pytest.mark.asyncio

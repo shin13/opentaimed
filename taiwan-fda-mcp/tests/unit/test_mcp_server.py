@@ -3,6 +3,7 @@
 
 import json
 import types
+from datetime import timedelta
 from pathlib import Path
 
 import httpx
@@ -151,6 +152,11 @@ async def test_get_package_insert_accepts_json_string_fields(fixtures_dir: Path)
     assert "indication" in payload["fields"]
 
 
+def _days_ago(n: int) -> str:
+    """ISO date `n` days before today in Taipei time (TFDA's dates)."""
+    return (tools_mod.taipei_today() - timedelta(days=n)).isoformat()
+
+
 @pytest.mark.asyncio
 async def test_check_insert_updates_accepts_json_string_license_list(fixtures_dir: Path):
     """`license_list` sent as a JSON-array STRING is coerced, not rejected."""
@@ -162,7 +168,8 @@ async def test_check_insert_updates_accepts_json_string_license_list(fixtures_di
         async with Client(mcp) as client:
             result = await client.call_tool(
                 "check_insert_updates",
-                {"since_date": "2026-07-18", "license_list": '["衛署藥輸字第021571號"]'},
+                # Relative date: a fixed one would add one mocked call per day forever.
+                {"since_date": _days_ago(2), "license_list": '["衛署藥輸字第021571號"]'},
             )
     payload = result.structured_content or json.loads(result.content[0].text)  # type: ignore[union-attr]
     assert payload["error"] is None

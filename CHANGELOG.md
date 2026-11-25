@@ -18,10 +18,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   Clients must then start a new session. `DEPLOYMENT.md` explains this.
 - CI: Dependabot version updates now run monthly instead of weekly. Security
   updates still open when a Dependabot alert is raised.
+- `check_insert_updates` now asks TFDA for one day at a time instead of ten.
+  One weekday can be 20–70 MB, mostly attached images. A failed day now costs
+  one day's retry, and `batch_errors` lists the exact day. Each day is its own
+  request, so long ranges are slower: an empty day still takes about 0.5 s.
+- `check_insert_updates` now accepts at most 31 days. A wider range returns
+  the error `DATE_RANGE_TOO_WIDE` and sends no request.
+- `check_insert_updates` now returns the error `INVALID_DATE` when
+  `since_date` is after today. Before, it returned no updates and no error,
+  which read as "nothing changed".
+- CI: the daily smoke test now checks one day of insert updates, walking back
+  from today, instead of a 3-day window that reached 115 MB (#168).
 
 ### Fixed
 - The server now reports its own version in `serverInfo`. Before, it reported
   the fastmcp version.
+- `check_insert_updates` no longer keeps every parsed insert in memory until
+  it returns. One weekday's inserts held about 24 MB.
+- `check_insert_updates` now ends its range at today's Taiwan date, which is
+  how TFDA dates inserts. Before, it used the UTC date, so between 00:00 and
+  08:00 Taiwan time it skipped the current day.
 
 ## [0.9.0] — 2026-10-13
 
