@@ -83,7 +83,7 @@
         }
       ],
       "default": null,
-      "description": "Upper bound (defaults to today UTC)."
+      "description": "Upper bound (defaults to today's Taiwan date)."
     },
     "total": {
       "default": 0,

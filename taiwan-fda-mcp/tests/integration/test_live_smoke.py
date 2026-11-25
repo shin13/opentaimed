@@ -17,8 +17,7 @@ Each case below was live-verified on 2026-06-02; the exact license numbers
 are pinned so a regression points at a specific, reproducible drug.
 """
 
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import timedelta
 
 import pytest
 
@@ -102,10 +101,10 @@ async def test_check_insert_updates_returns_recent_activity():
     CI (#168). 14 days covers a 9-day Lunar New Year break plus today, which is
     usually still empty when the 02:00 cron runs.
     """
-    from taiwan_fda_mcp.tools import check_insert_updates
+    from taiwan_fda_mcp.tools import check_insert_updates, taipei_today
 
     days_back = 14
-    day = datetime.now(ZoneInfo("Asia/Taipei")).date()
+    day = taipei_today()
     for _ in range(days_back):
         resp = await check_insert_updates(day.isoformat(), today=day.isoformat())
         assert resp.error is None

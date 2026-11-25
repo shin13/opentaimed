@@ -7,7 +7,7 @@ import difflib
 import logging
 import time
 from collections import Counter
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Literal
 from urllib.parse import quote, urlparse
 
@@ -840,6 +840,19 @@ def _error_response(license_no: str, code: RCode, message: str) -> GetPackageIns
 # costs ~0.5 s, the default rate-limit sleep after each call.
 _INSERT_UPDATES_WINDOW_DAYS = 1
 
+# Widest range one call may ask for. Each day is one request, so 31 days is up to
+# ~22 weekday downloads; wider ranges would run for an hour or more.
+INSERT_UPDATES_MAX_DAYS = 31
+
+# TFDA dates are Taiwan dates. A fixed UTC+8 offset is exact (no DST since 1979)
+# and, unlike ZoneInfo, does not need tzdata in the slim Docker image.
+_TAIPEI_TZ = timezone(timedelta(hours=8), "Asia/Taipei")
+
+
+def taipei_today() -> date:
+    """Return today's date in Taiwan, the calendar TFDA dates its inserts in."""
+    return datetime.now(_TAIPEI_TZ).date()
+
 
 async def check_insert_updates(
     since_date: str,
@@ -851,9 +864,14 @@ async def check_insert_updates(
 ) -> CheckInsertUpdatesResponse:
     """Find inserts updated between `since_date` and `today` (inclusive).
 
-    Sends one GetDrugDoc call per day (`_INSERT_UPDATES_WINDOW_DAYS`). A failed
-    day is SURFACED in `batch_errors` rather than silently dropped, and the
-    other days still return.
+    `today` defaults to the Taiwan date. Sends one GetDrugDoc call per day
+    (`_INSERT_UPDATES_WINDOW_DAYS`). A failed day is SURFACED in `batch_errors`
+    rather than silently dropped, and the other days still return.
+
+    Returns an `INVALID_DATE` error, never an empty success, when a date does
+    not parse or `since_date` is after `today`, and `DATE_RANGE_TOO_WIDE` when
+    the range spans more than `INSERT_UPDATES_MAX_DAYS` days. An empty success
+    would read as "no inserts were updated" although nothing was checked.
 
     `updates` is capped at `limit` (default 200, newest-first) to bound the
     response size; `total`, `returned`, `truncated`, and `by_date` let the
@@ -863,19 +881,37 @@ async def check_insert_updates(
     s = settings or get_settings()
     try:
         start = date.fromisoformat(since_date)
+        end = date.fromisoformat(today) if today else taipei_today()
     except ValueError as exc:
         return CheckInsertUpdatesResponse(
             since_date=since_date,
             today=today,
             error=ErrorInfo(code="INVALID_DATE", message=str(exc)),
         )
-    end = date.fromisoformat(today) if today else datetime.now(UTC).date()
 
     if end < start:
         return CheckInsertUpdatesResponse(
             since_date=start.isoformat(),
             today=end.isoformat(),
-            error=None,
+            error=ErrorInfo(
+                code="INVALID_DATE",
+                message=f"since_date {start} is after today {end} (Taiwan date).",
+            ),
+        )
+    span_days = (end - start).days + 1
+    if span_days > INSERT_UPDATES_MAX_DAYS:
+        earliest = end - timedelta(days=INSERT_UPDATES_MAX_DAYS - 1)
+        return CheckInsertUpdatesResponse(
+            since_date=start.isoformat(),
+            today=end.isoformat(),
+            error=ErrorInfo(
+                code="DATE_RANGE_TOO_WIDE",
+                message=(
+                    f"The range {start} to {end} is {span_days} days. The maximum is "
+                    f"{INSERT_UPDATES_MAX_DAYS} days, because each day is a separate FDA "
+                    f"request. Use a since_date of {earliest} or later."
+                ),
+            ),
         )
 
     filter_set = set(license_list) if license_list else None

@@ -468,7 +468,9 @@ class CheckInsertUpdatesResponse(BaseModel):
     """Response shape for `check_insert_updates`."""
 
     since_date: str = Field(description="Lower bound of the date range (echo, ISO format).")
-    today: str | None = Field(default=None, description="Upper bound (defaults to today UTC).")
+    today: str | None = Field(
+        default=None, description="Upper bound (defaults to today's Taiwan date)."
+    )
     error: ErrorInfo | None = Field(
         default=None, description="Top-level error if the whole call failed."
     )

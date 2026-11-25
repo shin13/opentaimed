@@ -3,9 +3,8 @@
 
 import json
 import types
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -155,7 +154,7 @@ async def test_get_package_insert_accepts_json_string_fields(fixtures_dir: Path)
 
 def _days_ago(n: int) -> str:
     """ISO date `n` days before today in Taipei time (TFDA's dates)."""
-    return (datetime.now(ZoneInfo("Asia/Taipei")).date() - timedelta(days=n)).isoformat()
+    return (tools_mod.taipei_today() - timedelta(days=n)).isoformat()
 
 
 @pytest.mark.asyncio
